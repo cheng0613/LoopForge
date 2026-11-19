@@ -99,7 +99,9 @@ def snapshot(root: Path) -> Dict[str, Tuple[bytes, int]]:
     for path in sorted(root.rglob("*")):
         if not path.is_file() or is_runtime_artifact(path.relative_to(root)):
             continue
-        relative = str(path.relative_to(root))
+        # POSIX separators: these keys are printed in plans and compared by
+        # callers, and a Windows checkout would otherwise yield backslashes.
+        relative = path.relative_to(root).as_posix()
         if relative.endswith(".devflow-managed-skills.json"):
             continue
         result[relative] = (path.read_bytes(), file_mode(path))

@@ -51,30 +51,32 @@ VENV_DIR="$TMP_DIR/venv"
 mkdir -p "$WHEEL_DIR"
 python3 -m pip wheel "$ROOT_DIR" --no-deps -w "$WHEEL_DIR" >/dev/null
 python3 -m venv "$VENV_DIR"
-"$VENV_DIR/bin/python" -m pip install "$WHEEL_DIR"/*.whl >/dev/null
-test -x "$VENV_DIR/bin/loopforge"
-test ! -e "$VENV_DIR/bin/devflow"
+# Windows venvs put executables in Scripts/, POSIX ones in bin/.
+if [[ -d "$VENV_DIR/Scripts" ]]; then VENV_BIN="$VENV_DIR/Scripts"; VENV_PY="$VENV_BIN/python.exe"; else VENV_BIN="$VENV_DIR/bin"; VENV_PY="$VENV_BIN/python"; fi
+"$VENV_PY" -m pip install "$WHEEL_DIR"/*.whl >/dev/null
+test -x "$VENV_BIN/loopforge"
+test ! -e "$VENV_BIN/devflow"
 test -f "$VENV_DIR/share/devflow/THIRD_PARTY_NOTICES.md"
 test ! -e "$VENV_DIR/share/devflow/skills/devflow/tests"
 CLI_PROJECT="$TMP_DIR/cli-project"
 mkdir -p "$CLI_PROJECT"
-"$VENV_DIR/bin/loopforge" doctor --project-root "$CLI_PROJECT"
-"$VENV_DIR/bin/loopforge" install claude --project-root "$CLI_PROJECT"
-"$VENV_DIR/bin/loopforge" status claude --project-root "$CLI_PROJECT"
-"$VENV_DIR/bin/loopforge" uninstall claude --project-root "$CLI_PROJECT"
+"$VENV_BIN/loopforge" doctor --project-root "$CLI_PROJECT"
+"$VENV_BIN/loopforge" install claude --project-root "$CLI_PROJECT"
+"$VENV_BIN/loopforge" status claude --project-root "$CLI_PROJECT"
+"$VENV_BIN/loopforge" uninstall claude --project-root "$CLI_PROJECT"
 
 CODEBUDDY_PROJECT="$TMP_DIR/codebuddy-project"
 DOWNSTREAM_PROJECT="$TMP_DIR/downstream-project"
 mkdir -p "$CODEBUDDY_PROJECT" "$DOWNSTREAM_PROJECT"
-"$VENV_DIR/bin/loopforge" skills install codebuddy --project-root "$CODEBUDDY_PROJECT"
+"$VENV_BIN/loopforge" skills install codebuddy --project-root "$CODEBUDDY_PROJECT"
 test -f "$CODEBUDDY_PROJECT/.codebuddy/skills/manifest.json"
 
 PI_PROJECT="$TMP_DIR/pi-project"
 mkdir -p "$PI_PROJECT"
-"$VENV_DIR/bin/loopforge" skills install pi --project-root "$PI_PROJECT"
+"$VENV_BIN/loopforge" skills install pi --project-root "$PI_PROJECT"
 test -f "$PI_PROJECT/.pi/skills/manifest.json"
 test -f "$PI_PROJECT/.pi/skills/devflow/SKILL.md"
-"$VENV_DIR/bin/python" \
+"$VENV_PY" \
   "$CODEBUDDY_PROJECT/.codebuddy/skills/devflow/scripts/install_adapter.py" \
   --adapter claude --project-root "$DOWNSTREAM_PROJECT" --copy-skills --refresh-managed
 test -f "$DOWNSTREAM_PROJECT/.claude/skills/manifest.json"

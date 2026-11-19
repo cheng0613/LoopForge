@@ -302,6 +302,9 @@ class InstallerTests(unittest.TestCase):
                 self.assertIn("enabledAutoRun: true", text)
 
     def test_classic_install_makes_observability_hook_executable(self):
+        if os.name == "nt":
+            # NTFS has no Unix execute bit; st_mode never carries S_IXUSR there.
+            self.skipTest("executable bit is not representable on Windows")
         hooks = (
             ("codebuddy", ".codebuddy/skills/agent-observability/scripts/run_hook.sh"),
             ("cursor", ".cursor/skills/agent-observability/scripts/run_hook.sh"),
@@ -316,6 +319,9 @@ class InstallerTests(unittest.TestCase):
                 self.assertTrue(hook.stat().st_mode & stat.S_IXUSR, relative)
 
     def test_update_restores_missing_executable_bit_on_hook(self):
+        if os.name == "nt":
+            # NTFS has no Unix execute bit; st_mode never carries S_IXUSR there.
+            self.skipTest("executable bit is not representable on Windows")
         with tempfile.TemporaryDirectory() as temporary:
             project = self.project(temporary)
             apply_install(project, "codebuddy", "classic")
