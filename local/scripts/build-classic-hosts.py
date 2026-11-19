@@ -147,7 +147,9 @@ def add_tree(files: Dict[str, bytes], source: Path, target_prefix: str, host: st
         if not path.is_file() or is_runtime_artifact(path.relative_to(source)):
             continue
         relative = path.relative_to(source)
-        target = str(Path(target_prefix) / relative)
+        # POSIX 分隔符：写入路径和 check_host 的 actual 键要一致，Windows 上
+        # Path 拼接会得到反斜杠。
+        target = (Path(target_prefix) / relative).as_posix()
         data = path.read_bytes()
         if path.suffix in {".md", ".mdc", ".json", ".yaml", ".yml"}:
             try:
@@ -222,8 +224,10 @@ def check_host(host: str) -> list:
     # 东西（见上面 134 行），这里扫描"实际有什么"必须用一样的排除规则，否则任何
     # 在 .claude/.cursor 下跑过一次 Python 语法检查就会把这些缓存文件误判成
     # "unmanaged extra"。
+    # wanted 用 POSIX 分隔符（见 add_tree），Windows 上 str(Path) 会给反斜杠，
+    # 不统一就会把同一批文件同时报成 missing 和 unmanaged extra。
     actual = {
-        str(path.relative_to(target)): path.read_bytes()
+        path.relative_to(target).as_posix(): path.read_bytes()
         for path in target.rglob("*")
         if path.is_file() and not is_runtime_artifact(path.relative_to(target))
     } if target.is_dir() else {}
