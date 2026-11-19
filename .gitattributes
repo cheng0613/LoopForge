@@ -1,2 +1,8 @@
 web/monaco/** linguist-vendored -whitespace
 web/vscode-web/** linguist-vendored -whitespace
+
+# Generated Classic host bundles are compared byte-for-byte against their
+# generator output, which writes LF. A CRLF checkout makes every check report
+# drift on Windows, so keep these line endings fixed.
+local/.claude/** -text
+local/.cursor/** -text
