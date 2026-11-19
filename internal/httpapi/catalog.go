@@ -401,6 +401,11 @@ func (h *catalogHandlers) validateWorkflowAgentScopes(workflow domain.WorkflowDe
 		}
 		agent, ok := h.repo.Agent(agentID)
 		if !ok {
+			// A global partner is usable from every project and owned by none, so
+			// it passes the ownership check below.
+			if _, global := h.repo.GlobalPartner(agentID); global {
+				continue
+			}
 			return fmt.Errorf("角色 %q 不存在", agentID)
 		}
 		owner := strings.TrimSpace(agent.ProjectID)

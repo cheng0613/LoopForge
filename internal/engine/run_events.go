@@ -220,6 +220,10 @@ func (e *Engine) observationContext(run domain.Run, nodeID string, nr *domain.No
 			ctx.AgentID = node.AgentID
 			ctx.ExecutorID = node.ExecutorID
 			ctx.MetricStage = node.MetricStage
+			// Cheap lookup only: observationContext runs for every telemetry event,
+			// so it must not trigger the global/template fallback that walks all
+			// templates on each call. A global partner simply leaves the version
+			// unset here, which only affects the log line.
 			if agent, ok := e.repo.Agent(node.AgentID); ok {
 				ctx.AgentVersion = agent.Version
 				if agent.ExecutorID != "" {

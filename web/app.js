@@ -12,7 +12,7 @@ const state = {
   selectedAgent:null, selectedRun:null, selectedRunNode:null, runFilter:'all', runQuery:'', runWorkflowFilter:'',
   selectedIssue:null, projectFilter:'', projectDraft:null, requirementIssueId:null, sourceFilter:'',
   projectAdminDetailId:null, projectAdminTab:'basic', projectAdminQuery:'', projectAdminFilter:'all', projectDraftFor:'', projectDraftBase:null, projectIdentCustom:false, projectIdentSeed:'', projectAdminErrors:{},
-  sopScope:'project', agentScope:'project', ruleScope:'project', skillScope:'project', dockerfileScope:'project', environmentScope:'project', sandboxScope:'project',
+  sopScope:'project', agentScope:'project', partnerSource:'project', ruleScope:'project', skillScope:'project', dockerfileScope:'project', environmentScope:'project', sandboxScope:'project',
   issueRunFilter:'', issueStatusFilter:'', issueAssigneeFilter:'', issueQuery:'', issueView:localStorage.getItem('agentflow.issueView')||'table',
   assetType:'dockerfiles', selectedAsset:null, assetQuery:'', assetDirty:false, mcpTab:'installed', mcpScope:'project', mcpMarket:[], mcpQuery:'', editingMCPId:'', poll:null, runStream:null,
   obsTab:'overview', obsDeliveryFilter:'all', obsTraceRunId:null, obsTraceAdapter:'live', obsScope:localStorage.getItem('agentflow.obsScope')==='project'?'project':'user', obsUserFilter:'', obsSourceFilter:'', obsUserFilterReady:false, obsTrendGrain:['day','week','month','all'].includes(localStorage.getItem('agentflow.obsTrendGrain'))?localStorage.getItem('agentflow.obsTrendGrain'):'all', obsPeriodKey:'', obsTrendMetric:['runs','issues','cost'].includes(localStorage.getItem('agentflow.obsTrendMetric'))?localStorage.getItem('agentflow.obsTrendMetric'):'tokens', obsCrossProject:null, drawerOpen:false, issueDetailTab:'overview', issueDetailData:null, propTab:'basic',
@@ -698,8 +698,13 @@ function canWriteProject(projectId){
   if(Number(project.ownerId)===id)return true;
   return (project.members||[]).some(m=>Number(m.userId)===id&&String(m.role||'').toLowerCase()!=='viewer');
 }
-// A partner is editable when its owning project is writable.
-function canEditAgent(agent){return !!agent&&canWriteProject(agent.projectId)}
+// A partner is editable when its owning project is writable. Global partners
+// have no owner, so only platform administrators may change them.
+function canEditAgent(agent){
+  if(!agent)return false;
+  if(isPartnerPage()||agent.projectId==='')return isPlatformAdmin();
+  return canWriteProject(agent.projectId);
+}
 function canEditGeneric(wf){return catalogGeneric(wf)&&isPlatformAdmin()}
 function catalogGeneric(item){return !!item?.generic}
 // Generic roles live in generic_templates, but the first project that
@@ -788,12 +793,18 @@ async function refreshGenericWorkflowRoles(){
     renderProperties();
   }
 }
-// 伙伴 can be viewed per project (default), by shared roles, or across every
-// project at once. The cross-project view is a read/aggregate view: it lists
-// everything the API returned, which already covers all projects because the
-// page loads /api/agents without a projectId filter.
+// 伙伴 has two sources: the rail page shows global partners (owned by no
+// project, shared by every one), while the settings entry keeps listing this
+// project's own partners. state.partnerSource records which page is open so the
+// same view code renders the right catalog.
+function isPartnerPage(){return state.partnerSource==='global'}
+function partnerCatalog(){
+  return isPartnerPage()?(state.data?.globalPartners||[]):(state.data?.agents||[]);
+}
 function scopedAgents(){
-  const all=state.data?.agents||[];
+  const all=partnerCatalog();
+  // Global partners have no project, so the project/shared split does not apply.
+  if(isPartnerPage())return all;
   if(state.agentScope==='shared')return all.filter(a=>catalogShared(a.projectId,a.shared));
   if(state.agentScope==='all')return all;
   return all.filter(a=>catalogOwned(a.projectId));
@@ -1621,9 +1632,6 @@ let settingsSidebarWasManaged=false;
 // management-mode). 'agents' is deliberately absent: 伙伴 is a top-level rail
 // entry with a cross-project view, so it should behave like a workspace page.
 const settingsManagementViews=['settings','assistant','projects','bots','sops','flow','runs','aiSchedules','mcp','rules','skills','runners','dockerfiles','environments','sandboxes','guide','platform'];
-// Views reachable from both the rail and the settings sidebar. The rail button
-// is the owner; the settings entry is a shortcut that hands over to it.
-const dualEntryViews=['agents'];
 const settingsRouteMotion=matchMedia('(prefers-reduced-motion: reduce)');
 let settingsRouteTransition=null;
 let settingsRouteApplying=false;
@@ -1813,7 +1821,7 @@ function setPlatformRailExpanded(expanded){
   const text=button.querySelector('.rail-label');
   if(text)text.textContent=label;
 }
-function viewTitles(){return {management:'设置',collaboration:'AI 工作台',issues:'需求列表',aiSchedules:'定时任务',bots:'通道管理',assistant:'AI 助手',runs:'运行记录',approvals:'待我确认',sops:'流程模板',flow:'流程设计',agents:'伙伴',mcp:'能力资产',rules:'能力资产',skills:'能力资产',dockerfiles:'环境资产',environments:'环境资产',sandboxes:'环境资产',observability:'统计',projects:'项目配置',platform:'平台管理',runners:'执行机器',settings:'个人配置',access:'访问密钥',guide:'访问密钥'}}
+function viewTitles(){return {management:'设置',collaboration:'AI 工作台',issues:'需求列表',aiSchedules:'定时任务',bots:'通道管理',assistant:'AI 助手',runs:'运行记录',approvals:'待我确认',sops:'流程模板',flow:'流程设计',agents:'角色定义',partners:'伙伴',mcp:'能力资产',rules:'能力资产',skills:'能力资产',dockerfiles:'环境资产',environments:'环境资产',sandboxes:'环境资产',observability:'统计',projects:'项目配置',platform:'平台管理',runners:'执行机器',settings:'个人配置',access:'访问密钥',guide:'访问密钥'}}
 // 设置侧栏只列一级入口；被合并进同一页的子视图（能力资产、环境资产的类型 Tab，
 // 从流程模板打开的流程设计）按 data-nav-match 高亮它们所属的入口。
 function settingsNavMatches(btn,name){return btn.dataset.view===name||String(btn.dataset.navMatch||'').split(/\s+/).includes(name)}
@@ -1959,7 +1967,10 @@ function switchView(name){
   if(name==='playbooks')name='sops';
   if(name==='management')name='settings';
   const assetViews=['rules','skills','dockerfiles','environments','sandboxes'];
-  const targetView=assetViews.includes(name)?'assets':name;
+  // 伙伴 (global partners) reuses the agent catalog view but loads a different
+  // source; the settings entry keeps data-view="agents" for this project's own.
+  const viewAliases={partners:'agents'};
+  const targetView=viewAliases[name]||(assetViews.includes(name)?'assets':name);
   if(!titles[name]||!$(`#${targetView}View`)){name='collaboration'}
   // 手敲 #/platform 或者从别的账号留下的 localStorage 恢复进来，都要挡住。
   if(name==='platform'&&!isPlatformAdmin())name='collaboration';
@@ -1969,21 +1980,13 @@ function switchView(name){
     if(crossingSettings&&!settingsRouteMotion.matches){startSettingsRouteTransition(name);return}
     cancelSettingsRouteTransition();
   }
-  const target=assetViews.includes(name)?'assets':name;
+  const target=viewAliases[name]||(assetViews.includes(name)?'assets':name);
   const staying=activeViewName()===name;
   const prevView=state.currentView;
   if(previous==='observability'&&name!=='observability'&&typeof obsDisposeCharts==='function'){obsCollapse?.({silent:true});obsDisposeCharts();obsDisposeSelects?.()}
   state.currentView=name;
   if(name!=='runs')stopQueuedRunRefresh();
-  // A view reachable from two places lights exactly one entry. 伙伴 is a rail
-  // page now (it left settingsManagementViews), so its rail button owns the
-  // highlight and the settings shortcut stays dark. Without this both would
-  // light at once because they share data-view="agents".
-  $$('.nav[data-view]').forEach(n=>{
-    const match=settingsNavMatches(n,name);
-    const inSettings=!!n.closest('#settingsSidebar');
-    n.classList.toggle('active', match && !(dualEntryViews.includes(name) && inSettings));
-  });
+  $$('.nav[data-view]').forEach(n=>n.classList.toggle('active',settingsNavMatches(n,name)));
   syncAssetTypeTabs(name);
   $$('.view').forEach(v=>v.classList.remove('active'));
   $(`#${target}View`).classList.add('active');
@@ -2042,7 +2045,9 @@ function switchView(name){
   if(name==='dashboard')refreshDashboard()
   if(name==='approvals')renderApprovals(false)
   if(name==='observability')refreshObs()
-  if(name==='agents'){api('/api/agents',{silent:true}).then(agents=>{state.data.agents=agents;renderAgents()}).catch(e=>toast(e.message));renderAgents();applyAgentRoute()}
+  if(name==='agents'){state.partnerSource='project';api('/api/agents',{silent:true}).then(agents=>{state.data.agents=agents;renderAgents()}).catch(e=>toast(e.message));renderAgents();applyAgentRoute()}
+  // 伙伴 is the global catalog: partners owned by no project, usable everywhere.
+  if(name==='partners'){state.partnerSource='global';applyAgentRoute();api('/api/global-partners',{silent:true}).then(list=>{state.data.globalPartners=list;renderAgents()}).catch(e=>toast(e.message));renderAgents()}
   if(name==='settings')renderPersonalSettings();
   if(name==='platform')renderPlatformAdminPanel();
   if(name==='projects')renderProjectAdmin();

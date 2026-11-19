@@ -206,8 +206,18 @@ func workflowAgent(st *repo.Store, wf domain.WorkflowDefinition, id string) (dom
 	}
 	if agent, ok := st.Agent(id); ok {
 		if st.AgentShadowsTemplateOutside(agent, wf.ProjectID) {
-			return st.GenericAgentByID(id)
+			return globalOrTemplateAgent(st, id)
 		}
+		return agent, true
+	}
+	return globalOrTemplateAgent(st, id)
+}
+
+// globalOrTemplateAgent falls back outside the project catalog: a global partner
+// wins over a bundled template role sharing the same id, because the former was
+// created deliberately by an administrator.
+func globalOrTemplateAgent(st *repo.Store, id string) (domain.AgentDefinition, bool) {
+	if agent, ok := st.GlobalPartner(id); ok {
 		return agent, true
 	}
 	return st.GenericAgentByID(id)
