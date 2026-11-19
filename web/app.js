@@ -683,6 +683,23 @@ function catalogVisible(projectId,shared){return catalogOwned(projectId)||catalo
 // Generic templates are platform-provided and project independent: every
 // project sees them, but they are read-only blueprints until adopted.
 function isPlatformAdmin(){return !!(state.currentUser&&!state.currentUser.isGuest&&state.currentUser.isPlatformAdmin)}
+// Mirrors the server's requireProjectWriter rule: a platform admin, the project
+// owner, or a non-viewer member may change a project's assets. Anyone else sees
+// the asset read-only and must copy it into their own project first.
+function canWriteProject(projectId){
+  if(!projectId)return true;               // platform-level assets are shared
+  if(isPlatformAdmin())return true;
+  const user=state.currentUser;
+  if(!user||user.isGuest)return false;
+  const project=(state.data.projects||[]).find(p=>p.id===projectId);
+  if(!project)return false;                // unknown project: fail closed
+  if(!project.ownerId)return true;         // ownerless projects are shared
+  const id=Number(user.id);
+  if(Number(project.ownerId)===id)return true;
+  return (project.members||[]).some(m=>Number(m.userId)===id&&String(m.role||'').toLowerCase()!=='viewer');
+}
+// A partner is editable when its owning project is writable.
+function canEditAgent(agent){return !!agent&&canWriteProject(agent.projectId)}
 function canEditGeneric(wf){return catalogGeneric(wf)&&isPlatformAdmin()}
 function catalogGeneric(item){return !!item?.generic}
 // Generic roles live in generic_templates, but the first project that
@@ -771,7 +788,16 @@ async function refreshGenericWorkflowRoles(){
     renderProperties();
   }
 }
-function scopedAgents(){const all=state.data?.agents||[];return state.agentScope==='shared'?all.filter(a=>catalogShared(a.projectId,a.shared)):all.filter(a=>catalogOwned(a.projectId))}
+// 伙伴 can be viewed per project (default), by shared roles, or across every
+// project at once. The cross-project view is a read/aggregate view: it lists
+// everything the API returned, which already covers all projects because the
+// page loads /api/agents without a projectId filter.
+function scopedAgents(){
+  const all=state.data?.agents||[];
+  if(state.agentScope==='shared')return all.filter(a=>catalogShared(a.projectId,a.shared));
+  if(state.agentScope==='all')return all;
+  return all.filter(a=>catalogOwned(a.projectId));
+}
 function visibleAssets(items){return (items||[]).filter(assetVisible)}
 function visibleMCPAssets(items){const uid=state.currentUser&&!state.currentUser.isGuest?Number(state.currentUser.id):0;return (items||[]).filter(item=>item.scope==='project'?item.projectId===state.projectFilter:item.scope==='personal'&&!item.marketId&&uid>0&&Number(item.ownerUserId)===uid)}
 function projectQuery(){return state.projectFilter?`?projectId=${encodeURIComponent(state.projectFilter)}`:''}
@@ -1591,7 +1617,13 @@ function settingsSidebarExpanded(){
 }
 let settingsSidebarEntryFrame=0;
 let settingsSidebarWasManaged=false;
-const settingsManagementViews=['settings','assistant','projects','bots','sops','flow','runs','aiSchedules','agents','mcp','rules','skills','runners','dockerfiles','environments','sandboxes','guide','platform'];
+// Views that live inside the settings surface (sidebar stays open, body gets
+// management-mode). 'agents' is deliberately absent: 伙伴 is a top-level rail
+// entry with a cross-project view, so it should behave like a workspace page.
+const settingsManagementViews=['settings','assistant','projects','bots','sops','flow','runs','aiSchedules','mcp','rules','skills','runners','dockerfiles','environments','sandboxes','guide','platform'];
+// Views reachable from both the rail and the settings sidebar. The rail button
+// is the owner; the settings entry is a shortcut that hands over to it.
+const dualEntryViews=['agents'];
 const settingsRouteMotion=matchMedia('(prefers-reduced-motion: reduce)');
 let settingsRouteTransition=null;
 let settingsRouteApplying=false;
@@ -1781,7 +1813,7 @@ function setPlatformRailExpanded(expanded){
   const text=button.querySelector('.rail-label');
   if(text)text.textContent=label;
 }
-function viewTitles(){return {management:'设置',collaboration:'AI 工作台',issues:'需求列表',aiSchedules:'定时任务',bots:'通道管理',assistant:'AI 助手',runs:'运行记录',approvals:'待我确认',sops:'流程模板',flow:'流程设计',agents:'角色定义',mcp:'能力资产',rules:'能力资产',skills:'能力资产',dockerfiles:'环境资产',environments:'环境资产',sandboxes:'环境资产',observability:'统计',projects:'项目配置',platform:'平台管理',runners:'执行机器',settings:'个人配置',access:'访问密钥',guide:'访问密钥'}}
+function viewTitles(){return {management:'设置',collaboration:'AI 工作台',issues:'需求列表',aiSchedules:'定时任务',bots:'通道管理',assistant:'AI 助手',runs:'运行记录',approvals:'待我确认',sops:'流程模板',flow:'流程设计',agents:'伙伴',mcp:'能力资产',rules:'能力资产',skills:'能力资产',dockerfiles:'环境资产',environments:'环境资产',sandboxes:'环境资产',observability:'统计',projects:'项目配置',platform:'平台管理',runners:'执行机器',settings:'个人配置',access:'访问密钥',guide:'访问密钥'}}
 // 设置侧栏只列一级入口；被合并进同一页的子视图（能力资产、环境资产的类型 Tab，
 // 从流程模板打开的流程设计）按 data-nav-match 高亮它们所属的入口。
 function settingsNavMatches(btn,name){return btn.dataset.view===name||String(btn.dataset.navMatch||'').split(/\s+/).includes(name)}
@@ -1943,7 +1975,15 @@ function switchView(name){
   if(previous==='observability'&&name!=='observability'&&typeof obsDisposeCharts==='function'){obsCollapse?.({silent:true});obsDisposeCharts();obsDisposeSelects?.()}
   state.currentView=name;
   if(name!=='runs')stopQueuedRunRefresh();
-  $$('.nav[data-view]').forEach(n=>n.classList.toggle('active',settingsNavMatches(n,name)));
+  // A view reachable from two places lights exactly one entry. 伙伴 is a rail
+  // page now (it left settingsManagementViews), so its rail button owns the
+  // highlight and the settings shortcut stays dark. Without this both would
+  // light at once because they share data-view="agents".
+  $$('.nav[data-view]').forEach(n=>{
+    const match=settingsNavMatches(n,name);
+    const inSettings=!!n.closest('#settingsSidebar');
+    n.classList.toggle('active', match && !(dualEntryViews.includes(name) && inSettings));
+  });
   syncAssetTypeTabs(name);
   $$('.view').forEach(v=>v.classList.remove('active'));
   $(`#${target}View`).classList.add('active');
