@@ -177,6 +177,11 @@ type WorkflowDefinition struct {
 	// the resolved profile plus Dockerfile/environment payload so retries can
 	// reconstruct the original environment after catalog definitions change.
 	SandboxSnapshot *RunnerSandboxSpec `json:"sandboxSnapshot,omitempty"`
+	// AgentSnapshots is populated only on Run.WorkflowSnapshot. It freezes the
+	// resolved partners (by id) this run's nodes use, so editing a partner
+	// mid-run cannot change an in-flight execution. Assets the partner
+	// references (rules, skills, MCP) stay live per project, as before.
+	AgentSnapshots map[string]AgentDefinition `json:"agentSnapshots,omitempty"`
 	// Preview is the optional frontend delivery contract. It is frozen into
 	// the run snapshot so later SOP edits cannot change an in-flight archive.
 	Preview   *PreviewContract `json:"preview,omitempty"`

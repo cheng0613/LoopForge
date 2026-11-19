@@ -152,6 +152,9 @@ func (e *Engine) startWorkflowDefinition(wf domain.WorkflowDefinition, input str
 		return domain.Run{}, err
 	}
 	wf.SandboxSnapshot = resolvedSandboxSnapshot(profile, resources)
+	// Freeze the partners this run binds, so an administrator editing a partner
+	// mid-run cannot change an in-flight execution. Mirrors SandboxSnapshot.
+	wf.AgentSnapshots = freezeRunAgents(e.repo, wf)
 	r := domain.Run{
 		ID: id, WorkflowID: workflowID, WorkflowSnapshot: wf, Status: "running", Input: input,
 		Repository: firstRepository, ExecutionContext: executionContext, Nodes: map[string]*domain.NodeRun{},

@@ -204,6 +204,41 @@ func workflowAgent(st *repo.Store, wf domain.WorkflowDefinition, id string) (dom
 	if domain.IsPreviewBuildAgent(id) {
 		return domain.PreviewBuildAgent(wf.Preview), true
 	}
+	// A run freezes the partners it binds at start, so an in-flight execution is
+	// unaffected by later catalog edits. Runs created before snapshots existed
+	// fall through to the live catalog.
+	if agent, ok := wf.AgentSnapshots[id]; ok {
+		return agent, true
+	}
+	return resolveLiveAgent(st, wf, id)
+}
+
+// freezeRunAgents resolves every partner the workflow's nodes bind, so the run
+// keeps the version it started with. Resolution only — the assets a partner
+// references stay live and resolve per project at execution time.
+func freezeRunAgents(st *repo.Store, wf domain.WorkflowDefinition) map[string]domain.AgentDefinition {
+	frozen := map[string]domain.AgentDefinition{}
+	for _, node := range wf.Nodes {
+		id := node.AgentID
+		if id == "" || domain.IsPreviewBuildAgent(id) {
+			continue
+		}
+		if _, done := frozen[id]; done {
+			continue
+		}
+		if agent, ok := resolveLiveAgent(st, wf, id); ok {
+			frozen[id] = agent
+		}
+	}
+	if len(frozen) == 0 {
+		return nil
+	}
+	return frozen
+}
+
+// resolveLiveAgent is workflowAgent without the snapshot lookup, used while
+// building the snapshot itself.
+func resolveLiveAgent(st *repo.Store, wf domain.WorkflowDefinition, id string) (domain.AgentDefinition, bool) {
 	if agent, ok := st.Agent(id); ok {
 		if st.AgentShadowsTemplateOutside(agent, wf.ProjectID) {
 			return globalOrTemplateAgent(st, id)
