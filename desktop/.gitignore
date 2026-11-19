@@ -1,0 +1,10 @@
+# Dependencies and build output
+node_modules/
+dist/
+out/
+
+# Generated at package time by scripts/bake-build-url.js
+src/build-env.json
+
+# Local runtime state
+*.log

@@ -1,0 +1,52 @@
+# electron-builder configuration.
+#
+# A packaged build is a thin window onto one LoopForge deployment. The platform
+# address is baked in at build time:
+#
+#   LOOPFORGE_BUILD_URL=https://loopforge.example.com npm run dist
+#
+# The beforePack/afterPack hooks (scripts/bake-build-url.js) write
+# src/build-env.json for the build, then delete it afterwards. No source file
+# is modified, so there is nothing to restore.
+appId: com.loopforge.desktop
+productName: LoopForge
+copyright: Copyright © LoopForge contributors
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - src/**/*
+  - package.json
+  - "!**/node_modules/electron/**"
+
+beforePack: scripts/bake-build-url.js
+afterPack: scripts/bake-build-url.js
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.png
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: LoopForge
+
+mac:
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  category: public.app-category.developer-tools
+  icon: build/icon.png
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Development
+  icon: build/icon.png

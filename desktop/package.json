@@ -1,0 +1,23 @@
+{
+  "name": "loopforge-desktop",
+  "productName": "LoopForge",
+  "version": "0.1.0",
+  "description": "LoopForge desktop shell — wraps the self-hosted platform in an Electron window.",
+  "main": "src/main.js",
+  "private": true,
+  "license": "MIT",
+  "author": "LoopForge contributors",
+  "scripts": {
+    "start": "electron .",
+    "dev": "node scripts/dev.js",
+    "test": "node scripts/smoke.js",
+    "check:launch": "node scripts/launch-check.js",
+    "check:auth": "node scripts/auth-check.js",
+    "dist": "electron-builder",
+    "dist:dir": "electron-builder --dir"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1",
+    "electron-builder": "^25.1.8"
+  }
+}
