@@ -86,6 +86,31 @@ Preserve the platform architecture; keep deployment-specific adapters isolated. 
 3. 禁止新增 `ensureXxx`/`migrateXxx`/`seedXxx` 之类的启动自愈逻辑写入
    生产路径。测试专用的默认数据只存在于 `internal/repo/opentest.go`
    （`OpenTest`，仅测试调用，生产代码不得引用）。
+4. **生成列（`GENERATED ALWAYS AS … STORED`）AutoMigrate 补不了**，因为
+   gorm 的模型只描述普通列。迁移 001 的 `run_telemetry.adapter` 和
+   `run_logs.level` 属于这类，缺了会在运行详情/统计时报
+   `Error 1054 Unknown column 'adapter'`。它们由
+   `scripts/install-observability-schema.sh` 幂等补齐（含存在性检查），
+   不要用裸 `ALTER` 重跑——MySQL 8.0 没有 `ADD COLUMN IF NOT EXISTS`。
+
+## 部署检查清单
+
+换库、换机器、重建 volume 后，逐条确认。跳过任何一条都会以"功能报错"
+的形式暴露，而不是以"迁移没跑"的形式——排查成本高很多。
+
+1. `bash scripts/install-schema-extensions.sh`
+   一次性覆盖三件事：生成列（001）、种子目录（`migrations/seed/*.sql`）、
+   内置 Dockerfile（031）。幂等，可重复执行；`./start.sh pull` 也会跑。
+2. 确认生成列真的在：
+   ```sql
+   SELECT table_name, column_name FROM information_schema.columns
+   WHERE table_schema='loopforge' AND column_name IN ('adapter','level');
+   ```
+   应为两行。缺失时 SOP 流程、运行详情、统计聚合都会 1054。
+3. 冒烟三条读生成列的路径：
+   - `GET /api/runs/<id>/telemetry?adapter=all`
+   - `GET /api/runs/<id>/telemetry?adapter=hooks`（以及 `otel`/`live`/具体值）
+   - `GET /api/analytics?range=30d`
 
 ## handler 层（internal/httpapi）
 
