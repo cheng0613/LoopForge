@@ -37,6 +37,34 @@ Preserve the platform architecture; keep deployment-specific adapters isolated. 
 
 代价是代码量增加，接受这个代价：保留旧行为带来的安全感，比省几百行更重要。
 
+### 3. 仓库是 LF，提交前检查行尾
+
+仓库里所有源文件用 **LF**（`.gitattributes` 只对生成产物做了约定，其余靠约定
+保持）。在 Windows 上用编辑器/工具改文件时会不小心写成 CRLF，后果是整个文件
+在 diff 里变成“每一行都改了”，把真实改动埋在一万行噪声里，review 无法进行。
+
+这不是理论风险：`internal/domain/`、`web/product-v4.css`、`chatbot/src/App.jsx`、
+`AGENTS.md` 都发生过一次。典型触发点是 `gofmt -w` 加整个目录、或在 Windows
+工具里重写整个文件。
+
+提交前必做：
+
+```bash
+git diff --stat          # 先看改动规模，整文件行数跳变就是可疑
+file <改过的文件>        # 出现 "with CRLF line terminators" 即被污染
+git diff | grep -c $'\r' # 非 0 说明 diff 里混了 CRLF
+```
+
+发现污染时转回 LF 再提交：
+
+```bash
+sed -i 's/\r$//' <文件>
+```
+
+另一个坑：`gofmt -w <目录>/` 会把整个包里**所有**文件重写一遍，即使只有
+一个文件有逻辑改动。所以只对改过的文件跑 gofmt，不要对目录跑；真被重写了
+就用 `git checkout -- <未改动的文件>` 逐个还原，只留真实改动。
+
 ## repo 层（internal/repo）
 
 每个领域一个 Repo，文件与方法一一归属：
