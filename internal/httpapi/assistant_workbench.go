@@ -79,6 +79,15 @@ func (h *assistantHandlers) workbenchReference(ref domain.AssistantReference, pr
 		ref.Name = v.Name
 		data = gin.H{"id": v.ID, "name": v.Name, "status": v.Status, "nodes": v.Nodes, "edges": v.Edges}
 	case "agent":
+		// A reference may point at a project role or a global partner. Partners live in
+		// their own table and belong to no project, so they are checked first: an
+		// @-mentioned partner would otherwise fail as "not in this project" even
+		// though every project can use it.
+		if v, ok := h.repo.GlobalPartner(ref.ID); ok {
+			ref.Name = v.Name
+			data = gin.H{"id": v.ID, "name": v.Name, "description": v.Description, "prompt": v.Prompt}
+			break
+		}
 		v, ok := h.repo.Agent(ref.ID)
 		if !ok || !allowed(v.ProjectID, v.Shared) {
 			break
