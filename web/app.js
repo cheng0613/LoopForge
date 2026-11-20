@@ -1514,6 +1514,10 @@ function nativeChatProjectId(){
 function postNativeChatProject(frame){
   frame.contentWindow?.postMessage({type:'agentflow-project-context',projectId:nativeChatProjectId()},location.origin);
   frame.contentWindow?.postMessage({type:'agentflow-environments-changed'},location.origin);
+  // The partner handover rides along here because this runs at every point the
+  // frame can take a message: on load, on ready, and on each view switch. Posting
+  // it only from the click handler lost the message when the frame remounted.
+  postPendingPartnerChat(frame);
 }
 // A requirement handed to the chat opens a new conversation with the
 // requirement already @-mentioned. It waits here until the chat frame can
@@ -1536,21 +1540,34 @@ function openIssueInChat(issue){
   postPendingChatIssueMention($('#chatNextFrame'));
   switchView('collaboration');
 }
+// A partner handed to the chat, waiting until the frame can take it.
+//
+// The URL query cannot carry this: the chat frame is mounted once and reused, so
+// its module-level reader (initialPartner) already ran with whatever the first
+// URL held. A message works whether the frame is freshly mounted or already open,
+// and it starts a new conversation either way.
+let pendingPartnerChat=null;
+function postPendingPartnerChat(frame){
+  if(!pendingPartnerChat||!nativeChatReady||frame?.dataset.src!=='native')return;
+  // Deliver on a microtask so the chat app has finished its own React commit for
+  // this view switch; posting inside the click handler reached the frame before
+  // its message listener was attached and the message was lost.
+  const pending=pendingPartnerChat;
+  setTimeout(()=>{
+    frame.contentWindow?.postMessage({type:'agentflow-chat-partner',partnerId:pending.partnerId},location.origin);
+    if(pendingPartnerChat===pending)pendingPartnerChat=null;
+  },0);
+}
 // Opens a conversation whose speaker is the given global partner, rather than
-// Main Bot dispatching it as a subagent. It always starts a fresh conversation:
-// the binding is chosen when the session is created, so resuming an existing
-// thread would leave it speaking as whoever it was created for.
+// Main Bot dispatching it as a subagent.
 function openPartnerChat(partner){
   if(!partner?.id)return;
+  pendingPartnerChat={partnerId:partner.id};
   const url=new URL(location.href);
   // A stale session would resume the old thread and ignore the partner.
   ['chatSession','chatIssue'].forEach(key=>url.searchParams.delete(key));
-  url.searchParams.set('partner',partner.id);
   history.replaceState({},'',url.pathname+url.search+'#/collaboration');
-  // The frame is reused across views, so clear its src to force a reload with the
-  // new query: otherwise the open chat keeps running as the previous speaker.
-  const frame=$('#chatNextFrame');
-  if(frame){frame.dataset.src='';frame.src='about:blank'}
+  postPendingPartnerChat($('#chatNextFrame'));
   switchView('collaboration');
 }
 // A project created, deleted or restored from the chat must reach the project
@@ -1570,6 +1587,7 @@ function mountNativeChat(){
       if(message.type==='agentflow-chat-ready'){
         nativeChatReady=true;
         postPendingChatIssueMention(frame);
+        postPendingPartnerChat(frame);
         postNativeChatProject(frame);
         finishBootLoader();
       }

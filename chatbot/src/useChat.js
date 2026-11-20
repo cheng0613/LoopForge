@@ -107,6 +107,10 @@ const initialPartner =
   new URLSearchParams(location.search).get("partner") || "";
 export function useChat() {
   const stopRequestRef = useRef(null);
+  // send() is a long-lived useCallback; reading pendingPartner from state there
+  // would capture the value from the render that created it (empty, before the
+  // workbench handed the partner over). The ref always has the current value.
+  const pendingPartnerRef = useRef(initialPartner);
   const [user, setUser] = useState(null),
     [projects, setProjects] = useState([]),
     [sandboxes, setSandboxes] = useState([]),
@@ -233,6 +237,22 @@ export function useChat() {
     [changeURL, executionMachines.resetMachine],
   );
   const newChat = useCallback(() => {
+    // A manual new chat is an ordinary conversation; only the workbench's
+    // handover binds a partner, and that one is consumed when its session is made.
+    pendingPartnerRef.current = "";
+    setPendingPartner("");
+    setDraftIssueId("");
+    open(null);
+  }, [open]);
+  // The workbench hands a partner over by message (see openPartnerChat): start a
+  // blank conversation and bind the first session to it. Unlike a URL parameter
+  // this works when the frame was already mounted, and it is consumed once so a
+  // later "new chat" is an ordinary conversation.
+  const startPartnerChat = useCallback((partnerId) => {
+    const id = String(partnerId || "").trim();
+    if (!id) return;
+    pendingPartnerRef.current = id;
+    setPendingPartner(id);
     setDraftIssueId("");
     open(null);
   }, [open]);
@@ -948,7 +968,7 @@ export function useChat() {
             id,
             projectId: projectRef.current,
             issueId: draftIssueId,
-            ...(pendingPartner ? { partnerId: pendingPartner } : {}),
+            ...(pendingPartnerRef.current ? { partnerId: pendingPartnerRef.current } : {}),
             sandboxProfileId,
             executionTarget: {pool: executionMachines.defaultRunnerId ? "runner" : "cloud", runnerId: executionMachines.defaultRunnerId || ""},
             model: activeModel,
@@ -966,7 +986,8 @@ export function useChat() {
         changeURL(id);
         // The binding is now on the server; drop it so a later new chat in this
         // page is an ordinary conversation and the URL stops claiming a partner.
-        if (pendingPartner) {
+        if (pendingPartnerRef.current) {
+          pendingPartnerRef.current = "";
           setPendingPartner("");
           const url = new URL(location.href);
           url.searchParams.delete("partner");
@@ -1401,6 +1422,7 @@ export function useChat() {
     user,
     refreshUser,
     users,
+    startPartnerChat,
     issueId: session?.issueId || (!activeId ? draftIssueId : ""),
     linkIssue,
     projects,

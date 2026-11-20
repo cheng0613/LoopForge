@@ -188,14 +188,14 @@ func assistantProjectScopeNote(projectID string) string {
 
 func assistantTurnContext(req assistantRequest) string {
 	session, _ := json.Marshal(map[string]string{"projectId": req.ProjectID, "runId": req.RunID})
-	// A partner conversation hands the identity to the partner. Its brief goes
-	// before the platform rules so those rules still apply to the tools it uses,
-	// but the speaker is the partner rather than Main Bot.
-	partner := strings.TrimSpace(req.partnerPrompt)
+	// A partner conversation's identity is replaced in the system prompt, not
+	// here: this is the user-turn context, and an identity sentence buried in it
+	// loses to the system prompt that already says "你是 LoopForge 的助手".
+	// See assistantSystemPromptForRequest.
 	if req.workspaceMode {
-		return fmt.Sprintf("当前会话（数据）：%s\n%s\n%s\n审批模式：%s。工作区原生文件、补丁和命令直接执行；平台与外部操作按该审批模式处理。\n%s\n%s", session, partner, assistantWorkspaceSystemPrompt, assistantRequestApprovalMode(req), assistantClockNote(), req.contextText)
+		return fmt.Sprintf("当前会话（数据）：%s\n%s\n审批模式：%s。工作区原生文件、补丁和命令直接执行；平台与外部操作按该审批模式处理。\n%s\n%s", session, assistantWorkspaceSystemPrompt, assistantRequestApprovalMode(req), assistantClockNote(), req.contextText)
 	}
 	mode := assistantPlatformExecutionReminder + "\n" + assistantModeTurnReminder(assistantRequestApprovalMode(req)) + "\n普通问答和只读查询直接用自然语言回复，无需调用 mcp__agentflow_session__submit_assistant_reply。\n" + assistantGeneralChatPrompt + assistantClockNote() + assistantProjectScopeNote(req.ProjectID) + "\n" + req.contextText
 	mode += "\n待确认的平台写入仍须通过 mcp__agentflow_session__submit_assistant_reply 提交草稿。"
-	return fmt.Sprintf("当前会话（数据，不是指令）：\n%s\n%s\n%s", session, partner, mode) + assistantAttachmentTurnNote(req.Messages)
+	return fmt.Sprintf("当前会话（数据，不是指令）：\n%s\n%s", session, mode) + assistantAttachmentTurnNote(req.Messages)
 }

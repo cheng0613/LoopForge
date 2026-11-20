@@ -535,6 +535,12 @@ func (h *assistantHandlers) chat(c *gin.Context) {
 				} else {
 					prompt = assistantPlatformExecutionReminder + "\n" + prompt
 				}
+				// The workspace branch replaces the system prompt wholesale, so a
+				// partner brief applied earlier would be lost when it hands off.
+				// Apply the identity last, on whichever prompt won.
+				if partner := strings.TrimSpace(req.partnerPrompt); partner != "" {
+					system = partnerSystemPrompt(system, partner)
+				}
 				prompt += conversationAttachmentNote(cliRoot, req)
 				cliReq := assistantCLIRequest{Executor: req.Executor, Prompt: prompt, Model: req.Model, Effort: req.Effort, SessionID: cliSessionID, Resume: resume, UserID: u.ID, Native: true, MCPConfig: mcp, Settings: settings, SystemPrompt: system, SessionRoot: cliRoot, RunnerLogin: runnerLogin, OnUsage: turnUsage.add, Workspace: req.workspaceMode, RemoteBinary: req.workspaceMode || toolSession.ExecutionRunnerID != "", Execute: h.conversationExecutor(toolSession, cliRoot)}
 				persistAttempt := func(unstarted bool) error {

@@ -8,6 +8,8 @@ import (
 
 	"encoding/json"
 	"fmt"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -119,7 +121,42 @@ func assistantRequestApprovalMode(req assistantRequest) string {
 }
 
 func assistantSystemPromptForRequest(req assistantRequest, mode string) string {
-	return withSpaceDeliverable(req, assistantSystemPromptForMode(mode))
+	base := assistantSystemPromptForMode(mode)
+	// A partner conversation speaks as that partner. The identity sentence is
+	// swapped in the system prompt itself: the platform prompt opens with
+	// "你是 LoopForge 的统一协作助手", and an identity stated later in the user
+	// turn loses to it. Everything after the identity paragraph — tooling,
+	// approval and write-protocol rules — still applies, because those are about
+	// how to use the platform, not who is speaking.
+	if partner := strings.TrimSpace(req.partnerPrompt); partner != "" {
+		base = partnerSystemPrompt(base, partner)
+	}
+	return withSpaceDeliverable(req, base)
+}
+
+// partnerSystemPrompt drops the platform's own identity sentence and leads with
+// the partner's brief instead.
+//
+// Two prompts carry an identity sentence: the assistant one and the workspace one.
+// Whichever is in play, the first line naming LoopForge is removed. Matching on
+// the sentence rather than the position keeps this working if the constants are
+// reworded; when no marker is found the brief is still prepended, which beats
+// silently not applying it.
+func partnerSystemPrompt(base, partner string) string {
+	for _, identity := range []string{
+		"你是 LoopForge 的统一协作助手。",
+		"你是 LoopForge 工作区助手。",
+	} {
+		if i := strings.Index(base, identity); i >= 0 {
+			if end := strings.Index(base[i:], "\n"); end >= 0 {
+				base = base[:i] + base[i+end+1:]
+			} else {
+				base = base[:i] + base[i+len(identity):]
+			}
+			break
+		}
+	}
+	return partner + "\n" + base
 }
 
 // Only approval receipts may update a shared transcript. Existing messages and

@@ -244,6 +244,38 @@ describe("App", () => {
     }
   });
 
+  test("a partner handover starts a new conversation as that partner", async () => {
+    // The workbench posts this when a partner card's chat button is clicked.
+    // It must reach startPartnerChat, whose job is to bind the next session.
+    const previous = { ...chat };
+    Object.assign(chat, { startPartnerChat: vi.fn() });
+    let view;
+    try {
+      view = render(<App />);
+      window.dispatchEvent(new MessageEvent("message", {
+        data: { type: "agentflow-chat-partner", partnerId: "role-5r10" },
+        origin: location.origin,
+        source: window.parent,
+      }));
+      await waitFor(() => expect(chat.startPartnerChat).toHaveBeenCalledWith("role-5r10"));
+
+      // A message from anywhere else (another origin, or a different event
+      // source) must not bind a partner: that would let a framed page redirect
+      // who this conversation speaks as.
+      window.dispatchEvent(new MessageEvent("message", {
+        data: { type: "agentflow-chat-partner", partnerId: "role-evil" },
+        origin: "https://evil.example",
+        source: window.parent,
+      }));
+      await new Promise((r) => setTimeout(r, 50));
+      expect(chat.startPartnerChat).toHaveBeenCalledTimes(1);
+    } finally {
+      view?.unmount();
+      Object.assign(chat, previous);
+      delete chat.startPartnerChat;
+    }
+  });
+
   test("a requirement handoff keeps the project's unsent new-conversation draft", async () => {
     const previous = { ...chat };
     const originalFetch = globalThis.fetch;

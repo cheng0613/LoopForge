@@ -255,14 +255,16 @@ func (h *assistantHandlers) prepareWorkbenchContext(c *gin.Context, req *assista
 		}
 		context.WriteString("当前会话关联的主需求（每轮从平台读取的最新数据）：" + data + "\n这是持续的需求上下文；其他 @需求只供本条消息参考。关联不会自动创建或派发运行，也不会改变会话可见范围。\n")
 	}
+	context.WriteString("当前任务以 runId 为准；普通会话引用只提供上下文。")
 	if req.partnerPrompt != "" {
-		// The partner is the speaker, so @角色 is a colleague to consult rather
-		// than a subagent to dispatch; asking a partner to dispatch itself would
-		// split one identity across two names.
-		context.WriteString("当前任务以 runId 为准；普通会话引用只提供上下文。@角色表示让该角色作为子 Agent 来做这件事。\n你正在以伙伴本人的身份对话，不要把自己派发出去，也不要声称自己是 Main Bot。\n")
+		// The speaker is the partner, so @角色 is a colleague to consult rather
+		// than a subagent that is "this role"; identity itself is set in the
+		// system prompt.
+		context.WriteString("你正在以伙伴本人的身份对话；@角色 是同事，不是要把工作派给「你自己」。")
 	} else {
-		context.WriteString("当前任务以 runId 为准；普通会话引用只提供上下文。@角色表示让该角色作为子 Agent 来做这件事。\n")
+		context.WriteString("@角色表示让该角色作为子 Agent 来做这件事。")
 	}
+	context.WriteString("\n")
 	if branch, ok := h.repo.AssistantSession(assistantStorageOwner(h.repo, req.SessionID, user.ID), req.SessionID); ok && branch.ParentSessionID != "" {
 		context.WriteString("这是编辑消息后的讨论分支。原会话后续执行过的文件修改和平台变更不会回退，可能已经存在；写入前先读取真实状态，避免重复导入、创建或派发。历史 inherited 草稿仅供参考，不可认为它们在当前分支重新执行。\n")
 	}
