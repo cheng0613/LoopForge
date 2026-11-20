@@ -198,10 +198,14 @@ type AssistantSession struct {
 	// title. It is not a user rename: later turns keep it, and a real rename clears it.
 	TitleGenerated bool   `json:"titleGenerated,omitempty"`
 	ProjectID      string `json:"projectId,omitempty"`
-	Model          string `json:"model,omitempty"`
-	Effort         string `json:"effort,omitempty"`
-	Executor       string `json:"executor,omitempty"`
-	RunID          string `json:"runId,omitempty"`
+	// PartnerID makes this conversation that partner's own chat: the partner's
+	// brief is the system identity for every turn instead of Main Bot. Empty is
+	// an ordinary conversation, so existing rows need no migration.
+	PartnerID string `json:"partnerId,omitempty"`
+	Model     string `json:"model,omitempty"`
+	Effort    string `json:"effort,omitempty"`
+	Executor  string `json:"executor,omitempty"`
+	RunID     string `json:"runId,omitempty"`
 	// WorkspaceRunID is the one workspace Main Bot has bound to an ordinary
 	// conversation: one the conversation opened, or the SOP run of an issue.
 	// Unlike RunID it does not make the session a shared run conversation.

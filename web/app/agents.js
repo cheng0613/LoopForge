@@ -94,7 +94,7 @@ function renderPartnerCards(){
     return `<article class="partner-card" role="button" tabindex="0" data-agent-id="${escapeHTML(a.id)}" aria-label="${escapeHTML(`${a.name}，v${a.version||1}，${a.description||''}`)}">
       <div class="partner-portrait" style="--partner-hue:${partnerHue(emoji)}" aria-hidden="true"><span class="partner-emoji">${escapeHTML(emoji)}</span></div>
       <div class="partner-body">
-        <div class="partner-top"><h3>${escapeHTML(a.name)}</h3><span class="partner-ver">v${a.version||1}</span><button type="button" class="agent-more-btn partner-more" data-agent-more="${escapeHTML(a.id)}" aria-label="更多操作" aria-haspopup="menu" aria-expanded="false"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button></div>
+        <div class="partner-top"><h3>${escapeHTML(a.name)}</h3><span class="partner-ver">v${a.version||1}</span><button type="button" class="partner-chat-btn" data-partner-chat="${escapeHTML(a.id)}" title="和这个伙伴单聊" aria-label="和 ${escapeHTML(a.name)} 单聊"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.2A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4Z"/></svg></button><button type="button" class="agent-more-btn partner-more" data-agent-more="${escapeHTML(a.id)}" aria-label="更多操作" aria-haspopup="menu" aria-expanded="false"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button></div>
         <p class="partner-id">${escapeHTML(a.id)}</p>
         <p class="partner-desc">${escapeHTML(a.description||'未填写职责')}</p>
         <ul class="partner-chips">${partnerChips(a)}</ul>
@@ -103,6 +103,11 @@ function renderPartnerCards(){
     </article>`;
   }).join('');
   list.querySelectorAll('[data-agent-more]').forEach(btn=>btn.onclick=e=>{e.stopPropagation();openAgentRowMenu(btn,partnerCatalog().find(a=>a.id===btn.dataset.agentMore))});
+  list.querySelectorAll('[data-partner-chat]').forEach(btn=>btn.onclick=e=>{
+    // The card itself opens the editor; the chat button must not also fire it.
+    e.stopPropagation();
+    openPartnerChat(partnerCatalog().find(a=>a.id===btn.dataset.partnerChat));
+  });
   list.querySelectorAll('.partner-card[data-agent-id]').forEach(card=>{
     const open=()=>openAgentWizard(partnerCatalog().find(a=>a.id===card.dataset.agentId));
     card.onclick=open;

@@ -3746,7 +3746,19 @@ html[data-theme="dark"] #agentsView .partner-portrait{
   font-size:10.5px;font-weight:600;font-variant-numeric:tabular-nums;
   color:var(--hu-text-2);background:var(--hu-canvas);border:1px solid var(--hu-border);
 }
-#agentsView .partner-more{margin-left:auto;flex-shrink:0;opacity:.55;transition:opacity var(--hu-dur)}
+#agentsView .partner-chat-btn{
+  margin-left:auto;flex-shrink:0;display:grid;place-items:center;
+  width:26px;height:26px;padding:0;border:1px solid transparent;border-radius:7px;
+  background:transparent;color:var(--hu-muted);cursor:pointer;
+  opacity:.55;transition:opacity var(--hu-dur),background var(--hu-dur),color var(--hu-dur),border-color var(--hu-dur);
+}
+#agentsView .partner-card:hover .partner-chat-btn,
+#agentsView .partner-card:focus-within .partner-chat-btn{opacity:1}
+#agentsView .partner-chat-btn:hover{
+  background:var(--hu-accent-soft);border-color:var(--hu-accent);color:var(--hu-accent);
+}
+#agentsView .partner-chat-btn:focus-visible{outline:2px solid var(--hu-accent);outline-offset:1px;opacity:1}
+#agentsView .partner-more{flex-shrink:0;opacity:.55;transition:opacity var(--hu-dur)}
 #agentsView .partner-card:hover .partner-more,
 #agentsView .partner-card:focus-within .partner-more{opacity:1}
 #agentsView .partner-id{

@@ -70,6 +70,10 @@ type assistantRequest struct {
 	// while preparing its context (an @-mentioned issue), so starting the
 	// turn does not mistake that link for a concurrent rebinding.
 	linkedIssueID string
+	// partnerPrompt is the brief of the partner this conversation belongs to.
+	// Non-empty replaces Main Bot as the speaker for the turn; see
+	// domain.PartnerChatPrompt.
+	partnerPrompt string
 	// roles are the project's roles plus shared roles mentioned in the
 	// conversation; each is written to the CLI home as a native subagent.
 	roles []roleSubagent

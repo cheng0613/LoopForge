@@ -1536,6 +1536,23 @@ function openIssueInChat(issue){
   postPendingChatIssueMention($('#chatNextFrame'));
   switchView('collaboration');
 }
+// Opens a conversation whose speaker is the given global partner, rather than
+// Main Bot dispatching it as a subagent. It always starts a fresh conversation:
+// the binding is chosen when the session is created, so resuming an existing
+// thread would leave it speaking as whoever it was created for.
+function openPartnerChat(partner){
+  if(!partner?.id)return;
+  const url=new URL(location.href);
+  // A stale session would resume the old thread and ignore the partner.
+  ['chatSession','chatIssue'].forEach(key=>url.searchParams.delete(key));
+  url.searchParams.set('partner',partner.id);
+  history.replaceState({},'',url.pathname+url.search+'#/collaboration');
+  // The frame is reused across views, so clear its src to force a reload with the
+  // new query: otherwise the open chat keeps running as the previous speaker.
+  const frame=$('#chatNextFrame');
+  if(frame){frame.dataset.src='';frame.src='about:blank'}
+  switchView('collaboration');
+}
 // A project created, deleted or restored from the chat must reach the project
 // switcher without a page refresh.
 function reloadShellProjects(){
@@ -1617,9 +1634,13 @@ function mountNativeChat(){
     }
     const mention=pendingChatIssueMention;
     pendingChatIssueMention=null;
+    // A partner conversation starts a fresh one with that partner as the speaker.
+    // The parameter is consumed by the chat app when it creates the session, then
+    // dropped from the URL so reopening the page does not bind a second one.
+    const partner=topParams.get('partner')||'';
     frame.src=mention
       ?'/chatbot/?projectId='+encodeURIComponent(mention.projectId)+'&mentionIssue='+encodeURIComponent(mention.issueId)
-      :'/chatbot/?projectId='+encodeURIComponent(projectId)+(sessionId?'&session='+encodeURIComponent(sessionId):issueId?'&issueId='+encodeURIComponent(issueId):'')+(quickAccess?'&quickAccess=1':'');
+      :'/chatbot/?projectId='+encodeURIComponent(projectId)+(sessionId?'&session='+encodeURIComponent(sessionId):issueId?'&issueId='+encodeURIComponent(issueId):'')+(quickAccess?'&quickAccess=1':'')+(partner?'&partner='+encodeURIComponent(partner):'');
   }
   postNativeChatProject(frame);
 }
@@ -2002,7 +2023,10 @@ function switchView(name){
   setSettingsSidebarExpanded(!narrowSettings?isPureManagement:staying?settingsSidebarExpanded():!!prevView&&!isSettingsManagementView(previous));
   $('#managementEntry')?.classList.toggle('active', isPureManagement);
   $('#railSettingsEntry')?.classList.toggle('active', isPureManagement);
-  const noSidebarViews = ['issues', 'approvals', 'observability'];
+  // Views with no二级 navigation of their own. 伙伴 is a top-level rail page like
+  // 需求/审批, so keeping the settings column would leave an empty 304px strip
+  // between the rail and the content.
+  const noSidebarViews = ['issues', 'approvals', 'observability', 'partners'];
   document.body.classList.toggle('no-sidebar', noSidebarViews.includes(name));
   document.body.classList.toggle('chat-next-active', name==='collaboration');
   if(name==='collaboration'||isPureManagement)mountNativeChat();

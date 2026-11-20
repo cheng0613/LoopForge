@@ -651,6 +651,12 @@ func (h *assistantHandlers) followSteer(parent context.Context, prev domain.Assi
 		ApprovalMode:    steer.ApprovalMode,
 		Messages:        session.Messages,
 	}
+	// A steer resumes the same conversation, so it must keep the same speaker.
+	if partnerID := strings.TrimSpace(session.PartnerID); partnerID != "" {
+		if partner, ok := h.repo.GlobalPartner(partnerID); ok {
+			req.partnerPrompt = h.partnerChatPrompt(partner, session.ProjectID, prev.UserID)
+		}
+	}
 	if req.RunID != "" && h.engine != nil {
 		token, err := h.engine.BeginConversationWorkspaceUse(req.RunID)
 		if err != nil {

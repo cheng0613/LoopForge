@@ -99,6 +99,12 @@ const PROJECT_LIST_TOOLS = new Set([
 ]);
 const initialProject =
   new URLSearchParams(location.search).get("projectId") || "";
+// A partner handed over by the workbench: the new conversation speaks as that
+// partner instead of Main Bot. Held in a ref-like const for the session created
+// on the first send; reading it once at mount keeps a stale query string from
+// binding a later conversation when the user starts another chat.
+const initialPartner =
+  new URLSearchParams(location.search).get("partner") || "";
 export function useChat() {
   const stopRequestRef = useRef(null);
   const [user, setUser] = useState(null),
@@ -116,6 +122,9 @@ export function useChat() {
     [models, setModels] = useState([]),
     [modelCatalogRefresh, requestModelCatalogRefresh] = useState(0),
     [sessions, setSessions] = useState([]),
+    // Only the first conversation of this page carries the partner binding; a
+    // later "new chat" in the same page is an ordinary Main Bot conversation.
+    [pendingPartner, setPendingPartner] = useState(initialPartner),
     [session, setSession] = useState(null),
     [activeId, setActiveId] = useState(
       new URLSearchParams(location.search).get("session") || null,
@@ -939,6 +948,7 @@ export function useChat() {
             id,
             projectId: projectRef.current,
             issueId: draftIssueId,
+            ...(pendingPartner ? { partnerId: pendingPartner } : {}),
             sandboxProfileId,
             executionTarget: {pool: executionMachines.defaultRunnerId ? "runner" : "cloud", runnerId: executionMachines.defaultRunnerId || ""},
             model: activeModel,
@@ -954,6 +964,14 @@ export function useChat() {
         currentId.current = id;
         setActiveId(id);
         changeURL(id);
+        // The binding is now on the server; drop it so a later new chat in this
+        // page is an ordinary conversation and the URL stops claiming a partner.
+        if (pendingPartner) {
+          setPendingPartner("");
+          const url = new URL(location.href);
+          url.searchParams.delete("partner");
+          history.replaceState({}, "", url);
+        }
       }
       const content = text.trim() || "请阅读本轮附件并回答。";
       const pending = {

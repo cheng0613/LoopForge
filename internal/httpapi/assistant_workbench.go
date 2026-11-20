@@ -141,6 +141,11 @@ func (h *assistantHandlers) accessibleWorkbenchReference(c *gin.Context, userID 
 	case "agent":
 		if v, ok := h.repo.Agent(ref.ID); ok {
 			project, shared = v.ProjectID, v.Shared
+		} else if partner, ok := h.repo.GlobalPartner(ref.ID); ok {
+			// A global partner belongs to no project and is usable from all of
+			// them, which is exactly the "shared" case here.
+			_ = partner
+			project, shared = "", true
 		}
 	case "skill":
 		if v, ok := h.repo.Skill(ref.ID); ok {
@@ -181,6 +186,28 @@ var errForeignReference = fmt.Errorf("只能引用当前项目的需求、角色
 
 var errNotProjectMember = fmt.Errorf("你还不是这个项目的成员，不能在项目里对话。可以把项目切换为「个人对话」直接聊，或请项目 Owner 把你加入项目")
 
+// partnerChatPrompt resolves a partner's rules for the project and renders the
+// brief a partner conversation speaks as.
+//
+// Rules resolve per project like an SOP node's, and only the rules the partner
+// actually names apply: RoleAssets returns everything the project exposes, which
+// is broader than this partner's binding.
+func (h *assistantHandlers) partnerChatPrompt(partner domain.AgentDefinition, projectID string, userID int64) string {
+	brief := domain.PartnerChatBrief{Partner: partner}
+	if h.engine != nil {
+		bound := map[string]bool{}
+		for _, id := range partner.Rules {
+			bound[id] = true
+		}
+		for _, rule := range h.engine.RoleAssets(partner, projectID, userID).Rules {
+			if bound[rule.ID] {
+				brief.Rules = append(brief.Rules, rule)
+			}
+		}
+	}
+	return brief.Prompt()
+}
+
 func (h *assistantHandlers) prepareWorkbenchContext(c *gin.Context, req *assistantRequest, user domain.User) error {
 	if !h.workbenchProjectAllowed(c, req.ProjectID, user.ID) {
 		return errNotProjectMember
@@ -205,6 +232,18 @@ func (h *assistantHandlers) prepareWorkbenchContext(c *gin.Context, req *assista
 	if len(req.Messages) > 200 {
 		return fmt.Errorf("会话过长，请开启新会话")
 	}
+	// A partner conversation speaks as that partner. The binding lives on the
+	// session, not on each turn, so a conversation can't change identity midway
+	// (an unknown id still refuses rather than silently falling back to Main Bot).
+	if req.SessionID != "" {
+		if old, ok := h.repo.AssistantSession(assistantStorageOwner(h.repo, req.SessionID, user.ID), req.SessionID); ok && strings.TrimSpace(old.PartnerID) != "" {
+			partner, ok := h.repo.GlobalPartner(strings.TrimSpace(old.PartnerID))
+			if !ok {
+				return fmt.Errorf("这个会话绑定的伙伴「%s」已不存在，请新建对话", old.PartnerID)
+			}
+			req.partnerPrompt = h.partnerChatPrompt(partner, req.ProjectID, user.ID)
+		}
+	}
 	var context strings.Builder
 	if s, ok := h.repo.AssistantSession(assistantStorageOwner(h.repo, req.SessionID, user.ID), req.SessionID); ok && s.IssueID != "" && req.RunID == "" {
 		if err := h.validateSessionIssue(c, req.ProjectID, s.IssueID, user.ID); err != nil {
@@ -216,7 +255,14 @@ func (h *assistantHandlers) prepareWorkbenchContext(c *gin.Context, req *assista
 		}
 		context.WriteString("当前会话关联的主需求（每轮从平台读取的最新数据）：" + data + "\n这是持续的需求上下文；其他 @需求只供本条消息参考。关联不会自动创建或派发运行，也不会改变会话可见范围。\n")
 	}
-	context.WriteString("当前任务以 runId 为准；普通会话引用只提供上下文。@角色表示让该角色作为子 Agent 来做这件事。\n")
+	if req.partnerPrompt != "" {
+		// The partner is the speaker, so @角色 is a colleague to consult rather
+		// than a subagent to dispatch; asking a partner to dispatch itself would
+		// split one identity across two names.
+		context.WriteString("当前任务以 runId 为准；普通会话引用只提供上下文。@角色表示让该角色作为子 Agent 来做这件事。\n你正在以伙伴本人的身份对话，不要把自己派发出去，也不要声称自己是 Main Bot。\n")
+	} else {
+		context.WriteString("当前任务以 runId 为准；普通会话引用只提供上下文。@角色表示让该角色作为子 Agent 来做这件事。\n")
+	}
 	if branch, ok := h.repo.AssistantSession(assistantStorageOwner(h.repo, req.SessionID, user.ID), req.SessionID); ok && branch.ParentSessionID != "" {
 		context.WriteString("这是编辑消息后的讨论分支。原会话后续执行过的文件修改和平台变更不会回退，可能已经存在；写入前先读取真实状态，避免重复导入、创建或派发。历史 inherited 草稿仅供参考，不可认为它们在当前分支重新执行。\n")
 	}
@@ -269,6 +315,8 @@ func (h *assistantHandlers) prepareWorkbenchContext(c *gin.Context, req *assista
 				if ref.Type == "agent" {
 					if role, ok := h.repo.Agent(ref.ID); ok && req.ProjectID != "" && (role.ProjectID == req.ProjectID || role.Shared) {
 						addRole(role)
+					} else if role, ok := h.repo.GlobalPartner(ref.ID); ok {
+						addRole(role)
 					}
 				}
 				if ref.Type == "skill" {
@@ -301,6 +349,9 @@ func (h *assistantHandlers) prepareWorkbenchContext(c *gin.Context, req *assista
 			context.WriteString("引用（数据）：" + text + "\n")
 			if ref.Type == "agent" {
 				if role, ok := h.repo.Agent(ref.ID); ok {
+					addRole(role)
+					mentioned = append(mentioned, role)
+				} else if role, ok := h.repo.GlobalPartner(ref.ID); ok {
 					addRole(role)
 					mentioned = append(mentioned, role)
 				}
@@ -443,6 +494,17 @@ func (h *assistantHandlers) workbenchReferences(c *gin.Context) {
 	}
 	for _, v := range h.repo.Agents() {
 		add("agent", v.ID, v.Name, v.ProjectID, v.Shared)
+	}
+	// Global partners belong to no project but are usable from every one, so they
+	// join the mention list as shared roles. Skip ids already served above.
+	projectAgents := map[string]bool{}
+	for _, v := range h.repo.Agents() {
+		projectAgents[v.ID] = true
+	}
+	for _, v := range h.repo.GlobalPartners() {
+		if !projectAgents[v.ID] {
+			add("agent", v.ID, v.Name, "", true)
+		}
 	}
 	for _, v := range h.repo.Workflows() {
 		add("sop", v.ID, v.Name, v.ProjectID, v.Shared || v.Generic)
