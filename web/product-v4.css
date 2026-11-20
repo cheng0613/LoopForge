@@ -3675,3 +3675,129 @@ html[data-theme="dark"] #runnersView .runner-runtime-icon:is(.codex,.claude-code
 @media(max-width:1100px){#projectsView .project-admin-layout>aside>:is(.project-admin-caption,.project-admin-list){position:static}}
 /* The profile card owns the theme switcher on desktop; the node stays because assistant.js inserts its button before it. */
 @media(min-width:1001px){.topbar #themeToggle{display:none!important}}
+
+/* ---------- 伙伴卡片（全局伙伴页专用） ----------
+   只在 #agentsView .agent-list-table.partner-grid 下生效，角色定义页的表格行不受影响。
+   头像用 emoji：比自绘图形稳定，也不用维护造型。底色色相由 emoji 推出（--partner-hue），
+   同一个动物在列表、详情、英文界面下都是同一个颜色。 */
+#agentsView .agent-list-table.partner-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:14px;
+  margin:6px 0 0;
+}
+@media (max-width:900px){
+  #agentsView .agent-list-table.partner-grid{grid-template-columns:minmax(0,1fr)}
+}
+
+#agentsView .partner-card{
+  display:grid;
+  grid-template-columns:106px minmax(0,1fr);
+  min-height:156px;
+  border:1px solid var(--hu-border);
+  border-radius:var(--hu-r-xl);
+  background:var(--hu-surface);
+  box-shadow:0 1px 2px rgba(15,23,42,.05);
+  overflow:hidden;
+  cursor:pointer;
+  transition:box-shadow var(--hu-dur) var(--hu-ease),transform var(--hu-dur) var(--hu-ease),border-color var(--hu-dur);
+}
+#agentsView .partner-card:hover{
+  transform:translateY(-2px);
+  border-color:var(--hu-border-strong);
+  box-shadow:0 14px 30px -14px rgba(15,23,42,.26),0 3px 8px rgba(15,23,42,.06);
+}
+#agentsView .partner-card:focus-visible{outline:2px solid var(--hu-accent);outline-offset:2px}
+
+/* 左侧头像 */
+#agentsView .partner-portrait{
+  position:relative;
+  display:flex;align-items:center;justify-content:center;
+  border-right:1px solid var(--hu-border);
+  background:
+    radial-gradient(circle at 50% 38%,rgba(255,255,255,.78),rgba(255,255,255,0) 62%),
+    linear-gradient(160deg,hsl(var(--partner-hue,220) 62% 95%),hsl(var(--partner-hue,220) 46% 86%));
+}
+html[data-theme="dark"] #agentsView .partner-portrait{
+  background:
+    radial-gradient(circle at 50% 38%,rgba(255,255,255,.10),rgba(255,255,255,0) 62%),
+    linear-gradient(160deg,hsl(var(--partner-hue,220) 26% 27%),hsl(var(--partner-hue,220) 22% 17%));
+}
+#agentsView .partner-emoji{
+  font-size:46px;line-height:1;user-select:none;
+  font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;
+  filter:drop-shadow(0 4px 8px rgba(15,23,42,.18));
+  transition:transform var(--hu-dur) var(--hu-ease);
+}
+#agentsView .partner-card:hover .partner-emoji{transform:scale(1.08)}
+
+/* 右侧内容 */
+#agentsView .partner-body{
+  display:flex;flex-direction:column;min-width:0;
+  padding:12px 14px 10px;
+}
+#agentsView .partner-top{display:flex;align-items:flex-start;gap:7px}
+#agentsView .partner-top h3{
+  margin:0;font-size:14.5px;font-weight:600;color:var(--hu-text);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+#agentsView .partner-ver{
+  flex-shrink:0;margin-top:2px;padding:1px 5px;border-radius:5px;
+  font-size:10.5px;font-weight:600;font-variant-numeric:tabular-nums;
+  color:var(--hu-text-2);background:var(--hu-canvas);border:1px solid var(--hu-border);
+}
+#agentsView .partner-more{margin-left:auto;flex-shrink:0;opacity:.55;transition:opacity var(--hu-dur)}
+#agentsView .partner-card:hover .partner-more,
+#agentsView .partner-card:focus-within .partner-more{opacity:1}
+#agentsView .partner-id{
+  margin:1px 0 0;
+  font:11.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:var(--hu-faint);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+#agentsView .partner-desc{
+  margin:7px 0 0;font-size:12.5px;line-height:1.55;color:var(--hu-muted);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+#agentsView .partner-chips{display:flex;flex-wrap:wrap;gap:5px;margin:9px 0 0;padding:0;list-style:none}
+#agentsView .partner-chip{
+  font-size:11px;line-height:1;padding:4px 7px;border-radius:6px;white-space:nowrap;
+  color:var(--hu-text-2);background:var(--hu-canvas);border:1px solid var(--hu-border);
+}
+#agentsView .partner-chip b{font-weight:650;color:var(--hu-text)}
+#agentsView .partner-chip.muted{
+  color:var(--hu-faint);background:transparent;border-style:dashed;
+}
+#agentsView .partner-foot{
+  display:flex;align-items:center;gap:8px;min-width:0;
+  margin-top:auto;padding-top:9px;border-top:1px solid var(--hu-border);
+  font-size:11.5px;color:var(--hu-faint);
+}
+#agentsView .partner-exec{
+  display:inline-flex;align-items:center;gap:5px;white-space:nowrap;color:var(--hu-text-2);
+}
+#agentsView .partner-exec i{
+  width:6px;height:6px;border-radius:50%;background:var(--hu-accent);display:inline-block;flex-shrink:0;
+}
+#agentsView .partner-model{
+  font:11px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:var(--hu-faint);background:var(--hu-canvas);border:1px solid var(--hu-border);
+  border-radius:5px;padding:3px 6px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;
+}
+#agentsView .partner-chev{margin-left:auto;display:grid;place-items:center;color:var(--hu-faint);transition:transform var(--hu-dur),color var(--hu-dur)}
+#agentsView .partner-card:hover .partner-chev{transform:translateX(2px);color:var(--hu-accent)}
+
+#agentsView .partner-empty{
+  grid-column:1/-1;text-align:center;padding:52px 20px;
+  border:1px dashed var(--hu-border-strong);border-radius:var(--hu-r-xl);background:var(--hu-surface);
+}
+#agentsView .partner-empty>span{display:block;font-size:32px;line-height:1;margin-bottom:10px}
+#agentsView .partner-empty b{display:block;font-size:14px;font-weight:600;color:var(--hu-text);margin-bottom:4px}
+#agentsView .partner-empty p{margin:0;font-size:12.5px;color:var(--hu-muted)}
+
+@media (prefers-reduced-motion:reduce){
+  #agentsView .partner-card,#agentsView .partner-emoji,#agentsView .partner-chev{transition:none}
+  #agentsView .partner-card:hover{transform:none}
+  #agentsView .partner-card:hover .partner-emoji{transform:none}
+}

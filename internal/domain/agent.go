@@ -62,11 +62,15 @@ const BaselineAlignAgentID = "baseline-align-resolver"
 const PlatformMCPServerID = "agentflow-platform"
 
 type AgentDefinition struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Version     int    `json:"version"`
-	ProjectID   string `json:"projectId,omitempty"`
-	Shared      bool   `json:"shared,omitempty"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Version   int    `json:"version"`
+	ProjectID string `json:"projectId,omitempty"`
+	Shared    bool   `json:"shared,omitempty"`
+	// Emoji is the partner's avatar, one character. Empty means "use the default
+	// for this id", so a role created without picking one still shows a picture
+	// instead of an empty square. See DisplayEmoji.
+	Emoji       string `json:"emoji,omitempty"`
 	Description string `json:"description"`
 	// Prompt is the role's single free-form brief: identity, task, order and
 	// limits. The engine wraps it with the role name plus deliverable, gate and

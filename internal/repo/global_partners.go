@@ -21,6 +21,9 @@ import (
 // GlobalPartners lists every global partner, sorted by name.
 func (r *CatalogRepo) GlobalPartners() []domain.AgentDefinition {
 	out := payloadList[domain.AgentDefinition](r.DB, "global_partners", "")
+	for i := range out {
+		out[i] = out[i].WithDefaultEmoji()
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
@@ -34,7 +37,7 @@ func (r *CatalogRepo) GlobalPartner(id string) (domain.AgentDefinition, bool) {
 	// A global partner carries no project identity, whatever an older row may say.
 	agent.ProjectID = ""
 	agent.Shared = false
-	return agent, true
+	return agent.WithDefaultEmoji(), true
 }
 
 // PutGlobalPartner creates or replaces a global partner.

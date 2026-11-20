@@ -23,6 +23,10 @@ function renderAgents(){
   // The rail page lists global partners: no project scope, no shared split.
   const global=isPartnerPage();
   syncPartnerScopeChrome();
+  // 伙伴页用卡片：这一页没有项目归属，表格的「模型/配置/引用」三列挤不出信息。
+  // 角色定义页仍走下面的表格，三个范围标签需要那几列。
+  if(global)return renderPartnerCards();
+  list.classList.remove('partner-grid');
   const query=($('#agentSearch')?.value||'').trim().toLowerCase(),agents=scopedAgents().filter(a=>!query||`${a.name} ${a.id} ${a.description} ${(a.rules||[]).join(' ')} ${(a.skills||[]).join(' ')}`.toLowerCase().includes(query));
   const used=new Map();(state.data.workflows||[]).forEach(w=>(w.nodes||[]).forEach(n=>{if(n.agentId)used.set(n.agentId,(used.get(n.agentId)||0)+1)}));
   const scopeLabel=global?'全局':state.agentScope==='shared'?'共享':state.agentScope==='all'?'全部项目':'项目';
@@ -46,6 +50,64 @@ function renderAgents(){
     row.onkeydown=e=>{if(e.target===row&&(e.key==='Enter'||e.key===' ')){e.preventDefault();open()}};
   });
   syncTabIndicator($('#agentsView [data-scope-for="agent"]'));
+}
+// 伙伴卡片：一行两张，左侧 emoji 头像。
+//
+// emoji 由后端下发（AgentDefinition.emoji，未设置时按 id 哈希给默认值），
+// 前端只负责上色：底色色相由 emoji 本身推出，所以同一个动物到哪都是同一个颜色，
+// 不需要再维护一张「动物 → 颜色」的映射表。
+function partnerHue(emoji){
+  let h=0;for(const ch of String(emoji||''))h=(h*31+ch.codePointAt(0))%360;
+  return h;
+}
+function partnerChips(a){
+  const chips=[];
+  if(a.rules?.length)chips.push(`规则 <b>${a.rules.length}</b>`);
+  if(a.skills?.length)chips.push(`技能 <b>${a.skills.length}</b>`);
+  if(a.mcpServers?.length)chips.push(`MCP <b>${a.mcpServers.length}</b>`);
+  if(a.knowledgeBase)chips.push('知识库');
+  // 全空时说清楚「只靠提示词」，比排一堆空标签好读。
+  if(!chips.length)return '<li class="partner-chip muted">仅提示词</li>';
+  return chips.map(c=>`<li class="partner-chip">${c}</li>`).join('');
+}
+function renderPartnerCards(){
+  const list=$('#agentList');if(!list)return;
+  const query=($('#agentSearch')?.value||'').trim().toLowerCase();
+  const agents=scopedAgents().filter(a=>!query||`${a.name} ${a.id} ${a.description} ${a.emoji||''}`.toLowerCase().includes(query));
+  const used=new Map();(state.data.workflows||[]).forEach(w=>(w.nodes||[]).forEach(n=>{if(n.agentId)used.set(n.agentId,(used.get(n.agentId)||0)+1)}));
+  state.agentUsage=used;
+  $('#agentCatalogStats').innerHTML=`<span><b>${agents.length}</b> 个全局伙伴</span><span><b>${agents.reduce((n,a)=>n+(a.skills?.length||0),0)}</b> 项技能绑定</span><span><b>${agents.reduce((n,a)=>n+(a.mcpServers?.length||0),0)}</b> 个 MCP 连接</span>`;
+  closeAgentRowMenu();
+  // 卡片需要 grid，表格的 display:block 不能留着。
+  list.classList.add('partner-grid');
+  if(!agents.length){
+    const empty=query&&scopedAgents().length
+      ?['没有匹配的伙伴。','换个关键词试试。']
+      :['还没有全局伙伴。','全局伙伴不归属任何项目，所有项目都能用。'];
+    list.innerHTML=`<div class="partner-empty"><span aria-hidden="true">${query?'🔍':'🦊'}</span><b>${empty[0]}</b><p>${empty[1]}</p></div>`;
+    return;
+  }
+  list.innerHTML=agents.map(a=>{
+    const exec=(state.data.executors||[]).find(x=>x.id===a.executorId);
+    const model=a.model||exec?.model||exec?.name||'';
+    const emoji=a.emoji||'🦊';
+    return `<article class="partner-card" role="button" tabindex="0" data-agent-id="${escapeHTML(a.id)}" aria-label="${escapeHTML(`${a.name}，v${a.version||1}，${a.description||''}`)}">
+      <div class="partner-portrait" style="--partner-hue:${partnerHue(emoji)}" aria-hidden="true"><span class="partner-emoji">${escapeHTML(emoji)}</span></div>
+      <div class="partner-body">
+        <div class="partner-top"><h3>${escapeHTML(a.name)}</h3><span class="partner-ver">v${a.version||1}</span><button type="button" class="agent-more-btn partner-more" data-agent-more="${escapeHTML(a.id)}" aria-label="更多操作" aria-haspopup="menu" aria-expanded="false"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button></div>
+        <p class="partner-id">${escapeHTML(a.id)}</p>
+        <p class="partner-desc">${escapeHTML(a.description||'未填写职责')}</p>
+        <ul class="partner-chips">${partnerChips(a)}</ul>
+        <div class="partner-foot"><span class="partner-exec"><i></i>${escapeHTML(exec?.name||a.executorId||'未选执行器')}</span>${model?`<span class="partner-model">${escapeHTML(model)}</span>`:''}<span class="partner-chev" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span></div>
+      </div>
+    </article>`;
+  }).join('');
+  list.querySelectorAll('[data-agent-more]').forEach(btn=>btn.onclick=e=>{e.stopPropagation();openAgentRowMenu(btn,partnerCatalog().find(a=>a.id===btn.dataset.agentMore))});
+  list.querySelectorAll('.partner-card[data-agent-id]').forEach(card=>{
+    const open=()=>openAgentWizard(partnerCatalog().find(a=>a.id===card.dataset.agentId));
+    card.onclick=open;
+    card.onkeydown=e=>{if(e.target===card&&(e.key==='Enter'||e.key===' ')){e.preventDefault();open()}};
+  });
 }
 function agentRowTag(a){
   if(catalogOwned(a.projectId))return a.shared?'<span class="agent-row-tag shared">已共享</span>':'';
