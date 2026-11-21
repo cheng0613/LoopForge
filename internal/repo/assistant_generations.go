@@ -196,6 +196,13 @@ func (r *AssistantRepo) BeginAssistantGeneration(g domain.AssistantGeneration, p
 				next := pending[0]
 				next.ExecutionTargetLocked = true
 				old := decodeAssistantSession(session)
+				// Bindings are server-owned. A send carries the client's copy of the
+				// conversation, which never learned about a partner picked later, so
+				// accepting it verbatim would silently unbind the conversation and the
+				// next turn would answer as LoopForge instead of the partner.
+				if old.PartnerID != "" {
+					next.PartnerID = old.PartnerID
+				}
 				if next.IssueID != old.IssueID {
 					return fmt.Errorf("关联需求已更新，请重新发送")
 				}

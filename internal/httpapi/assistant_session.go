@@ -347,6 +347,19 @@ func (h *assistantHandlers) session(c *gin.Context) {
 		}
 		conv.ID = assistantRecordID(id)
 		conv.Shared = existing.Shared
+		// The partner binding is chosen when the conversation is created and is
+		// not editable afterwards: switching identity mid-thread would rewrite
+		// who the earlier replies were. An unknown id is refused here so the
+		// conversation cannot start with a speaker that does not exist.
+		if existing.ID != "" {
+			conv.PartnerID = existing.PartnerID
+		} else if id := strings.TrimSpace(conv.PartnerID); id != "" {
+			if _, ok := h.repo.GlobalPartner(id); !ok {
+				c.JSON(400, gin.H{"error": "伙伴不存在"})
+				return
+			}
+			conv.PartnerID = id
+		}
 		if !existing.Shared && conv.ProjectID != "" {
 			if !h.workbenchProjectAllowed(c, conv.ProjectID, current.ID) {
 				c.JSON(403, gin.H{"error": "无权绑定此项目"})

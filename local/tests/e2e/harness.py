@@ -37,6 +37,10 @@ def run(argv, cwd=None, check=True, env=None):
     result = subprocess.run(
         [str(item) for item in argv], cwd=str(cwd) if cwd else None,
         text=True, capture_output=True, env=env or _env(),
+        # The CLI prints UTF-8 (Chinese copy among it), while text=True alone
+        # decodes with the platform default — GBK on a Chinese Windows, which
+        # fails and leaves stdout as None.
+        encoding="utf-8", errors="replace",
     )
     if check and result.returncode != 0:
         raise AssertionError(
@@ -63,8 +67,16 @@ def loopforge_command():
         tarball = workdir / packed[0]["filename"]
         prefix = workdir / "prefix"
         run(["npm", "install", "--global", "--prefix", prefix, tarball])
-        binary = prefix / "bin" / "loopforge"
-        if not binary.exists():
+        # npm writes loopforge.cmd / loopforge.ps1 on Windows and a bare
+        # loopforge elsewhere, and Windows puts the launchers directly under the
+        # prefix instead of prefix/bin. Search both layouts.
+        binary = None
+        for candidate in (prefix / "bin", prefix):
+            found = shutil.which("loopforge", path=str(candidate))
+            if found:
+                binary = found
+                break
+        if not binary:
             raise AssertionError("npm package did not install a loopforge binary")
         _PACKAGE["argv"] = [binary]
     return list(_PACKAGE["argv"])
@@ -167,9 +179,18 @@ def classic_hook_env(project):
 
 
 def run_hook(project, command, payload):
+    argv = [str(item) for item in command]
+    # A .sh hook cannot be executed directly on Windows (WinError 193), so hand
+    # it to bash explicitly. POSIX hosts keep the shebang.
+    if os.name == "nt" and argv and argv[0].lower().endswith(".sh"):
+        bash = shutil.which("bash")
+        if not bash:
+            raise unittest.SkipTest("bash is required to run .sh hooks on Windows")
+        argv = [bash] + argv
     result = subprocess.run(
-        [str(item) for item in command], input=json.dumps(payload), cwd=str(project),
+        argv, input=json.dumps(payload), cwd=str(project),
         env=classic_hook_env(project), capture_output=True, text=True, timeout=60,
+        encoding="utf-8", errors="replace",
     )
     if result.returncode != 0:
         raise AssertionError("hook {} failed: {}".format(command, result.stderr))

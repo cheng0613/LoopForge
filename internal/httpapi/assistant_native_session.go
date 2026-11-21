@@ -188,6 +188,10 @@ func assistantProjectScopeNote(projectID string) string {
 
 func assistantTurnContext(req assistantRequest) string {
 	session, _ := json.Marshal(map[string]string{"projectId": req.ProjectID, "runId": req.RunID})
+	// A partner conversation's identity is replaced in the system prompt, not
+	// here: this is the user-turn context, and an identity sentence buried in it
+	// loses to the system prompt that already says "你是 LoopForge 的助手".
+	// See assistantSystemPromptForRequest.
 	if req.workspaceMode {
 		return fmt.Sprintf("当前会话（数据）：%s\n%s\n审批模式：%s。工作区原生文件、补丁和命令直接执行；平台与外部操作按该审批模式处理。\n%s\n%s", session, assistantWorkspaceSystemPrompt, assistantRequestApprovalMode(req), assistantClockNote(), req.contextText)
 	}

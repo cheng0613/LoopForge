@@ -642,6 +642,19 @@ type genericTemplateRow struct {
 
 func (genericTemplateRow) TableName() string { return "generic_templates" }
 
+// globalPartnerRow stores a partner that belongs to no project: every project
+// can use it, and each project still resolves its rules and skills from its own
+// copies at run time. Kept apart from `agents` so project partners keep their
+// existing per-project semantics.
+type globalPartnerRow struct {
+	ID      string     `gorm:"column:id;primaryKey;size:64"`
+	Name    string     `gorm:"column:name;size:255"`
+	Payload []byte     `gorm:"column:payload;type:json"`
+	Updated *time.Time `gorm:"column:updated_at;index:idx_global_partners_updated"`
+}
+
+func (globalPartnerRow) TableName() string { return "global_partners" }
+
 type chatRoomRow struct {
 	ID        string     `gorm:"column:id;primaryKey;size:64"`
 	ProjectID string     `gorm:"column:project_id;index:idx_chat_rooms_project;size:64"`
@@ -747,7 +760,7 @@ func (knowledgeSubmissionRow) TableName() string { return "knowledge_submissions
 // allModels lists every table for the sqlite test schema (AutoMigrate).
 func allModels() []any {
 	return []any{domain.BotUserBinding{}, domain.BotBindingChallenge{}, domain.BotConnection{}, domain.BotConversation{}, domain.BotInteraction{}, notificationBotRow{}, botCredentialRow{}, domain.NotificationDelivery{},
-		userRow{}, localAccountRow{}, userConfigRow{}, gitSSHKeyRow{}, gitHTTPCredentialRow{}, authIntegrationRow{}, platformCodeBuddyKeyRow{}, apiTokenRow{}, genericTemplateRow{},
+		userRow{}, localAccountRow{}, userConfigRow{}, gitSSHKeyRow{}, gitHTTPCredentialRow{}, authIntegrationRow{}, platformCodeBuddyKeyRow{}, apiTokenRow{}, genericTemplateRow{}, globalPartnerRow{},
 		insightSourceRow{}, insightExecutionRow{},
 		projectRow{}, projectMemberRow{}, repositoryRow{}, businessDomainRow{}, businessDomainAssignmentRow{},
 		agentRow{}, ruleRow{}, skillRow{}, skillFileRow{}, mcpServerRow{}, mcpFileRow{}, executorRow{},

@@ -584,6 +584,19 @@ export default function App() {
   // new conversation with the requirement already @-mentioned. It waits for
   // the new conversation's draft to load so the draft does not overwrite it.
   useEffect(() => {
+    const partnerListener = (event) => {
+      if (
+        event.source !== window.parent ||
+        event.origin !== location.origin ||
+        event.data?.type !== "agentflow-chat-partner"
+      ) return;
+      const partnerId = String(event.data.partnerId || "");
+      if (partnerId) chat.startPartnerChat(partnerId);
+    };
+    window.addEventListener("message", partnerListener);
+    return () => window.removeEventListener("message", partnerListener);
+  }, [chat.startPartnerChat]);
+  useEffect(() => {
     const listener = (event) => {
       if (
         event.source !== window.parent ||

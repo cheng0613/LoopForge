@@ -17,7 +17,10 @@ func publicCatalogTemplates(t *testing.T) map[string]GenericTemplate {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pattern := regexp.MustCompile(`^INSERT IGNORE INTO generic_templates .*VALUES \('([^']*)','[^']*','(.*)',UTC_TIMESTAMP\(\)\);$`)
+	// The trailing \r? keeps this matching on Windows checkouts where the
+	// editor wrote CRLF line endings into the seed file; the committed blob
+	// stays LF.
+	pattern := regexp.MustCompile(`^INSERT IGNORE INTO generic_templates .*VALUES \('([^']*)','[^']*','(.*)',UTC_TIMESTAMP\(\)\);\r?$`)
 	templates := map[string]GenericTemplate{}
 	for _, line := range strings.Split(string(raw), "\n") {
 		match := pattern.FindStringSubmatch(line)

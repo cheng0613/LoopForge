@@ -12,7 +12,7 @@ const state = {
   selectedAgent:null, selectedRun:null, selectedRunNode:null, runFilter:'all', runQuery:'', runWorkflowFilter:'',
   selectedIssue:null, projectFilter:'', projectDraft:null, requirementIssueId:null, sourceFilter:'',
   projectAdminDetailId:null, projectAdminTab:'basic', projectAdminQuery:'', projectAdminFilter:'all', projectDraftFor:'', projectDraftBase:null, projectIdentCustom:false, projectIdentSeed:'', projectAdminErrors:{},
-  sopScope:'project', agentScope:'project', ruleScope:'project', skillScope:'project', dockerfileScope:'project', environmentScope:'project', sandboxScope:'project',
+  sopScope:'project', agentScope:'project', partnerSource:'project', ruleScope:'project', skillScope:'project', dockerfileScope:'project', environmentScope:'project', sandboxScope:'project',
   issueRunFilter:'', issueStatusFilter:'', issueAssigneeFilter:'', issueQuery:'', issueView:localStorage.getItem('agentflow.issueView')||'table',
   assetType:'dockerfiles', selectedAsset:null, assetQuery:'', assetDirty:false, mcpTab:'installed', mcpScope:'project', mcpMarket:[], mcpQuery:'', editingMCPId:'', poll:null, runStream:null,
   obsTab:'overview', obsDeliveryFilter:'all', obsTraceRunId:null, obsTraceAdapter:'live', obsScope:localStorage.getItem('agentflow.obsScope')==='project'?'project':'user', obsUserFilter:'', obsSourceFilter:'', obsUserFilterReady:false, obsTrendGrain:['day','week','month','all'].includes(localStorage.getItem('agentflow.obsTrendGrain'))?localStorage.getItem('agentflow.obsTrendGrain'):'all', obsPeriodKey:'', obsTrendMetric:['runs','issues','cost'].includes(localStorage.getItem('agentflow.obsTrendMetric'))?localStorage.getItem('agentflow.obsTrendMetric'):'tokens', obsCrossProject:null, drawerOpen:false, issueDetailTab:'overview', issueDetailData:null, propTab:'basic',
@@ -683,6 +683,28 @@ function catalogVisible(projectId,shared){return catalogOwned(projectId)||catalo
 // Generic templates are platform-provided and project independent: every
 // project sees them, but they are read-only blueprints until adopted.
 function isPlatformAdmin(){return !!(state.currentUser&&!state.currentUser.isGuest&&state.currentUser.isPlatformAdmin)}
+// Mirrors the server's requireProjectWriter rule: a platform admin, the project
+// owner, or a non-viewer member may change a project's assets. Anyone else sees
+// the asset read-only and must copy it into their own project first.
+function canWriteProject(projectId){
+  if(!projectId)return true;               // platform-level assets are shared
+  if(isPlatformAdmin())return true;
+  const user=state.currentUser;
+  if(!user||user.isGuest)return false;
+  const project=(state.data.projects||[]).find(p=>p.id===projectId);
+  if(!project)return false;                // unknown project: fail closed
+  if(!project.ownerId)return true;         // ownerless projects are shared
+  const id=Number(user.id);
+  if(Number(project.ownerId)===id)return true;
+  return (project.members||[]).some(m=>Number(m.userId)===id&&String(m.role||'').toLowerCase()!=='viewer');
+}
+// A partner is editable when its owning project is writable. Global partners
+// have no owner, so only platform administrators may change them.
+function canEditAgent(agent){
+  if(!agent)return false;
+  if(isPartnerPage()||agent.projectId==='')return isPlatformAdmin();
+  return canWriteProject(agent.projectId);
+}
 function canEditGeneric(wf){return catalogGeneric(wf)&&isPlatformAdmin()}
 function catalogGeneric(item){return !!item?.generic}
 // Generic roles live in generic_templates, but the first project that
@@ -771,7 +793,22 @@ async function refreshGenericWorkflowRoles(){
     renderProperties();
   }
 }
-function scopedAgents(){const all=state.data?.agents||[];return state.agentScope==='shared'?all.filter(a=>catalogShared(a.projectId,a.shared)):all.filter(a=>catalogOwned(a.projectId))}
+// 伙伴 has two sources: the rail page shows global partners (owned by no
+// project, shared by every one), while the settings entry keeps listing this
+// project's own partners. state.partnerSource records which page is open so the
+// same view code renders the right catalog.
+function isPartnerPage(){return state.partnerSource==='global'}
+function partnerCatalog(){
+  return isPartnerPage()?(state.data?.globalPartners||[]):(state.data?.agents||[]);
+}
+function scopedAgents(){
+  const all=partnerCatalog();
+  // Global partners have no project, so the project/shared split does not apply.
+  if(isPartnerPage())return all;
+  if(state.agentScope==='shared')return all.filter(a=>catalogShared(a.projectId,a.shared));
+  if(state.agentScope==='all')return all;
+  return all.filter(a=>catalogOwned(a.projectId));
+}
 function visibleAssets(items){return (items||[]).filter(assetVisible)}
 function visibleMCPAssets(items){const uid=state.currentUser&&!state.currentUser.isGuest?Number(state.currentUser.id):0;return (items||[]).filter(item=>item.scope==='project'?item.projectId===state.projectFilter:item.scope==='personal'&&!item.marketId&&uid>0&&Number(item.ownerUserId)===uid)}
 function projectQuery(){return state.projectFilter?`?projectId=${encodeURIComponent(state.projectFilter)}`:''}
@@ -1477,6 +1514,10 @@ function nativeChatProjectId(){
 function postNativeChatProject(frame){
   frame.contentWindow?.postMessage({type:'agentflow-project-context',projectId:nativeChatProjectId()},location.origin);
   frame.contentWindow?.postMessage({type:'agentflow-environments-changed'},location.origin);
+  // The partner handover rides along here because this runs at every point the
+  // frame can take a message: on load, on ready, and on each view switch. Posting
+  // it only from the click handler lost the message when the frame remounted.
+  postPendingPartnerChat(frame);
 }
 // A requirement handed to the chat opens a new conversation with the
 // requirement already @-mentioned. It waits here until the chat frame can
@@ -1499,6 +1540,36 @@ function openIssueInChat(issue){
   postPendingChatIssueMention($('#chatNextFrame'));
   switchView('collaboration');
 }
+// A partner handed to the chat, waiting until the frame can take it.
+//
+// The URL query cannot carry this: the chat frame is mounted once and reused, so
+// its module-level reader (initialPartner) already ran with whatever the first
+// URL held. A message works whether the frame is freshly mounted or already open,
+// and it starts a new conversation either way.
+let pendingPartnerChat=null;
+function postPendingPartnerChat(frame){
+  if(!pendingPartnerChat||!nativeChatReady||frame?.dataset.src!=='native')return;
+  // Deliver on a microtask so the chat app has finished its own React commit for
+  // this view switch; posting inside the click handler reached the frame before
+  // its message listener was attached and the message was lost.
+  const pending=pendingPartnerChat;
+  setTimeout(()=>{
+    frame.contentWindow?.postMessage({type:'agentflow-chat-partner',partnerId:pending.partnerId},location.origin);
+    if(pendingPartnerChat===pending)pendingPartnerChat=null;
+  },0);
+}
+// Opens a conversation whose speaker is the given global partner, rather than
+// Main Bot dispatching it as a subagent.
+function openPartnerChat(partner){
+  if(!partner?.id)return;
+  pendingPartnerChat={partnerId:partner.id};
+  const url=new URL(location.href);
+  // A stale session would resume the old thread and ignore the partner.
+  ['chatSession','chatIssue'].forEach(key=>url.searchParams.delete(key));
+  history.replaceState({},'',url.pathname+url.search+'#/collaboration');
+  postPendingPartnerChat($('#chatNextFrame'));
+  switchView('collaboration');
+}
 // A project created, deleted or restored from the chat must reach the project
 // switcher without a page refresh.
 function reloadShellProjects(){
@@ -1516,6 +1587,7 @@ function mountNativeChat(){
       if(message.type==='agentflow-chat-ready'){
         nativeChatReady=true;
         postPendingChatIssueMention(frame);
+        postPendingPartnerChat(frame);
         postNativeChatProject(frame);
         finishBootLoader();
       }
@@ -1580,9 +1652,13 @@ function mountNativeChat(){
     }
     const mention=pendingChatIssueMention;
     pendingChatIssueMention=null;
+    // A partner conversation starts a fresh one with that partner as the speaker.
+    // The parameter is consumed by the chat app when it creates the session, then
+    // dropped from the URL so reopening the page does not bind a second one.
+    const partner=topParams.get('partner')||'';
     frame.src=mention
       ?'/chatbot/?projectId='+encodeURIComponent(mention.projectId)+'&mentionIssue='+encodeURIComponent(mention.issueId)
-      :'/chatbot/?projectId='+encodeURIComponent(projectId)+(sessionId?'&session='+encodeURIComponent(sessionId):issueId?'&issueId='+encodeURIComponent(issueId):'')+(quickAccess?'&quickAccess=1':'');
+      :'/chatbot/?projectId='+encodeURIComponent(projectId)+(sessionId?'&session='+encodeURIComponent(sessionId):issueId?'&issueId='+encodeURIComponent(issueId):'')+(quickAccess?'&quickAccess=1':'')+(partner?'&partner='+encodeURIComponent(partner):'');
   }
   postNativeChatProject(frame);
 }
@@ -1591,7 +1667,10 @@ function settingsSidebarExpanded(){
 }
 let settingsSidebarEntryFrame=0;
 let settingsSidebarWasManaged=false;
-const settingsManagementViews=['settings','assistant','projects','bots','sops','flow','runs','aiSchedules','agents','mcp','rules','skills','runners','dockerfiles','environments','sandboxes','guide','platform'];
+// Views that live inside the settings surface (sidebar stays open, body gets
+// management-mode). 'agents' is deliberately absent: 伙伴 is a top-level rail
+// entry with a cross-project view, so it should behave like a workspace page.
+const settingsManagementViews=['settings','assistant','projects','bots','sops','flow','runs','aiSchedules','mcp','rules','skills','runners','dockerfiles','environments','sandboxes','guide','platform'];
 const settingsRouteMotion=matchMedia('(prefers-reduced-motion: reduce)');
 let settingsRouteTransition=null;
 let settingsRouteApplying=false;
@@ -1781,7 +1860,7 @@ function setPlatformRailExpanded(expanded){
   const text=button.querySelector('.rail-label');
   if(text)text.textContent=label;
 }
-function viewTitles(){return {management:'设置',collaboration:'AI 工作台',issues:'需求列表',aiSchedules:'定时任务',bots:'通道管理',assistant:'AI 助手',runs:'运行记录',approvals:'待我确认',sops:'流程模板',flow:'流程设计',agents:'角色定义',mcp:'能力资产',rules:'能力资产',skills:'能力资产',dockerfiles:'环境资产',environments:'环境资产',sandboxes:'环境资产',observability:'统计',projects:'项目配置',platform:'平台管理',runners:'执行机器',settings:'个人配置',access:'访问密钥',guide:'访问密钥'}}
+function viewTitles(){return {management:'设置',collaboration:'AI 工作台',issues:'需求列表',aiSchedules:'定时任务',bots:'通道管理',assistant:'AI 助手',runs:'运行记录',approvals:'待我确认',sops:'流程模板',flow:'流程设计',agents:'角色定义',partners:'伙伴',mcp:'能力资产',rules:'能力资产',skills:'能力资产',dockerfiles:'环境资产',environments:'环境资产',sandboxes:'环境资产',observability:'统计',projects:'项目配置',platform:'平台管理',runners:'执行机器',settings:'个人配置',access:'访问密钥',guide:'访问密钥'}}
 // 设置侧栏只列一级入口；被合并进同一页的子视图（能力资产、环境资产的类型 Tab，
 // 从流程模板打开的流程设计）按 data-nav-match 高亮它们所属的入口。
 function settingsNavMatches(btn,name){return btn.dataset.view===name||String(btn.dataset.navMatch||'').split(/\s+/).includes(name)}
@@ -1927,7 +2006,10 @@ function switchView(name){
   if(name==='playbooks')name='sops';
   if(name==='management')name='settings';
   const assetViews=['rules','skills','dockerfiles','environments','sandboxes'];
-  const targetView=assetViews.includes(name)?'assets':name;
+  // 伙伴 (global partners) reuses the agent catalog view but loads a different
+  // source; the settings entry keeps data-view="agents" for this project's own.
+  const viewAliases={partners:'agents'};
+  const targetView=viewAliases[name]||(assetViews.includes(name)?'assets':name);
   if(!titles[name]||!$(`#${targetView}View`)){name='collaboration'}
   // 手敲 #/platform 或者从别的账号留下的 localStorage 恢复进来，都要挡住。
   if(name==='platform'&&!isPlatformAdmin())name='collaboration';
@@ -1937,7 +2019,7 @@ function switchView(name){
     if(crossingSettings&&!settingsRouteMotion.matches){startSettingsRouteTransition(name);return}
     cancelSettingsRouteTransition();
   }
-  const target=assetViews.includes(name)?'assets':name;
+  const target=viewAliases[name]||(assetViews.includes(name)?'assets':name);
   const staying=activeViewName()===name;
   const prevView=state.currentView;
   if(previous==='observability'&&name!=='observability'&&typeof obsDisposeCharts==='function'){obsCollapse?.({silent:true});obsDisposeCharts();obsDisposeSelects?.()}
@@ -1959,7 +2041,10 @@ function switchView(name){
   setSettingsSidebarExpanded(!narrowSettings?isPureManagement:staying?settingsSidebarExpanded():!!prevView&&!isSettingsManagementView(previous));
   $('#managementEntry')?.classList.toggle('active', isPureManagement);
   $('#railSettingsEntry')?.classList.toggle('active', isPureManagement);
-  const noSidebarViews = ['issues', 'approvals', 'observability'];
+  // Views with no二级 navigation of their own. 伙伴 is a top-level rail page like
+  // 需求/审批, so keeping the settings column would leave an empty 304px strip
+  // between the rail and the content.
+  const noSidebarViews = ['issues', 'approvals', 'observability', 'partners'];
   document.body.classList.toggle('no-sidebar', noSidebarViews.includes(name));
   document.body.classList.toggle('chat-next-active', name==='collaboration');
   if(name==='collaboration'||isPureManagement)mountNativeChat();
@@ -2002,7 +2087,9 @@ function switchView(name){
   if(name==='dashboard')refreshDashboard()
   if(name==='approvals')renderApprovals(false)
   if(name==='observability')refreshObs()
-  if(name==='agents'){api('/api/agents',{silent:true}).then(agents=>{state.data.agents=agents;renderAgents()}).catch(e=>toast(e.message));renderAgents();applyAgentRoute()}
+  if(name==='agents'){state.partnerSource='project';api('/api/agents',{silent:true}).then(agents=>{state.data.agents=agents;renderAgents()}).catch(e=>toast(e.message));renderAgents();applyAgentRoute()}
+  // 伙伴 is the global catalog: partners owned by no project, usable everywhere.
+  if(name==='partners'){state.partnerSource='global';applyAgentRoute();api('/api/global-partners',{silent:true}).then(list=>{state.data.globalPartners=list;renderAgents()}).catch(e=>toast(e.message));renderAgents()}
   if(name==='settings')renderPersonalSettings();
   if(name==='platform')renderPlatformAdminPanel();
   if(name==='projects')renderProjectAdmin();

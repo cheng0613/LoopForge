@@ -5,8 +5,9 @@ function renderCatalogScopes(){
   const sopGeneric=workflows.filter(w=>catalogGeneric(w)).length;
   const agentProject=agents.filter(a=>catalogOwned(a.projectId)).length;
   const agentShared=agents.filter(a=>catalogShared(a.projectId,a.shared)).length;
+  const agentAll=agents.length;
   const set=(id,n)=>{const el=document.querySelector(`[data-scope-count="${id}"]`);if(el)el.textContent=n};
-  set('sop-project',sopProject);set('sop-shared',sopShared);set('sop-generic',sopGeneric);set('agent-project',agentProject);set('agent-shared',agentShared);
+  set('sop-project',sopProject);set('sop-shared',sopShared);set('sop-generic',sopGeneric);set('agent-project',agentProject);set('agent-shared',agentShared);set('agent-all',agentAll);
   document.querySelectorAll('[data-scope-for]').forEach(bar=>{
     const current=bar.dataset.scopeFor==='agent'?state.agentScope:state.sopScope;
     bar.querySelectorAll('[data-scope]').forEach(btn=>btn.classList.toggle('on',btn.dataset.scope===current));

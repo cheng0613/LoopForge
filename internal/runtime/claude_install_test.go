@@ -171,7 +171,9 @@ func TestDockerfileBundlesTheOnDemandDeepSeekHarnessRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), "@deepseek-ai/dsh@"+DeepSeekHarnessVersion+" ") && !strings.Contains(string(raw), "@deepseek-ai/dsh@"+DeepSeekHarnessVersion+"\n") {
+	// The trailing \r? keeps this matching on Windows checkouts whose working
+	// tree has CRLF line endings; the committed blob stays LF.
+	if !strings.Contains(string(raw), "@deepseek-ai/dsh@"+DeepSeekHarnessVersion+" ") && !strings.Contains(string(raw), "@deepseek-ai/dsh@"+DeepSeekHarnessVersion+"\r\n") && !strings.Contains(string(raw), "@deepseek-ai/dsh@"+DeepSeekHarnessVersion+"\n") {
 		t.Fatalf("Dockerfile must install @deepseek-ai/dsh@%s", DeepSeekHarnessVersion)
 	}
 }

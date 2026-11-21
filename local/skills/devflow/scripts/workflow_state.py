@@ -1018,7 +1018,9 @@ def command_resume(args: argparse.Namespace) -> int:
             stage=data["awaiting_approval"],
             requires_user_confirmation=required_user_confirmation,
             artifact=(
-                str(Path(data["artifacts_dir"]) / "01-requirement/requirement-report.md")
+                # POSIX separators: this path is printed and compared by callers,
+                # and a Windows checkout would otherwise yield backslashes.
+                (Path(data["artifacts_dir"]) / "01-requirement/requirement-report.md").as_posix()
                 if data["awaiting_approval"] == "REQUIREMENT" else None
             ),
             command=(

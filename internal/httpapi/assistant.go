@@ -70,6 +70,10 @@ type assistantRequest struct {
 	// while preparing its context (an @-mentioned issue), so starting the
 	// turn does not mistake that link for a concurrent rebinding.
 	linkedIssueID string
+	// partnerPrompt is the brief of the partner this conversation belongs to.
+	// Non-empty replaces Main Bot as the speaker for the turn; see
+	// domain.PartnerChatPrompt.
+	partnerPrompt string
 	// roles are the project's roles plus shared roles mentioned in the
 	// conversation; each is written to the CLI home as a native subagent.
 	roles []roleSubagent
@@ -530,6 +534,12 @@ func (h *assistantHandlers) chat(c *gin.Context) {
 					prompt = assistantWorkspaceSystemPrompt + "\n审批模式：" + approvalMode + "。\n" + prompt
 				} else {
 					prompt = assistantPlatformExecutionReminder + "\n" + prompt
+				}
+				// The workspace branch replaces the system prompt wholesale, so a
+				// partner brief applied earlier would be lost when it hands off.
+				// Apply the identity last, on whichever prompt won.
+				if partner := strings.TrimSpace(req.partnerPrompt); partner != "" {
+					system = partnerSystemPrompt(system, partner)
 				}
 				prompt += conversationAttachmentNote(cliRoot, req)
 				cliReq := assistantCLIRequest{Executor: req.Executor, Prompt: prompt, Model: req.Model, Effort: req.Effort, SessionID: cliSessionID, Resume: resume, UserID: u.ID, Native: true, MCPConfig: mcp, Settings: settings, SystemPrompt: system, SessionRoot: cliRoot, RunnerLogin: runnerLogin, OnUsage: turnUsage.add, Workspace: req.workspaceMode, RemoteBinary: req.workspaceMode || toolSession.ExecutionRunnerID != "", Execute: h.conversationExecutor(toolSession, cliRoot)}

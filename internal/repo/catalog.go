@@ -34,12 +34,19 @@ func BaselineAlignResolverAgent() domain.AgentDefinition {
 
 func (r *CatalogRepo) Agents() []domain.AgentDefinition {
 	out := payloadList[domain.AgentDefinition](r.DB, "agents", "")
+	for i := range out {
+		out[i] = out[i].WithDefaultEmoji()
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 
 func (r *CatalogRepo) Agent(id string) (domain.AgentDefinition, bool) {
-	return payloadOne[domain.AgentDefinition](r.DB, "agents", id)
+	agent, ok := payloadOne[domain.AgentDefinition](r.DB, "agents", id)
+	if !ok {
+		return domain.AgentDefinition{}, false
+	}
+	return agent.WithDefaultEmoji(), true
 }
 
 func (r *CatalogRepo) PutAgent(v domain.AgentDefinition) error {
